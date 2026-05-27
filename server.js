@@ -1,45 +1,41 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
+const cors    = require('cors');
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 4000;
 
-// ── Middlewares ────────────────────────────────────────────
+/* ── Middlewares ─────────────────────────────────────────── */
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin:       process.env.CORS_ORIGIN || '*',
+  methods:      ['GET','POST','PUT','DELETE','PATCH','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
 }));
 app.use(express.json());
 
-// ── Rotas ──────────────────────────────────────────────────
+/* ── Rotas ───────────────────────────────────────────────── */
+app.use('/api/cursos',     require('./routes/cursos'));
 app.use('/api/turmas',     require('./routes/turmas'));
 app.use('/api/alunos',     require('./routes/alunos'));
 app.use('/api/reservas',   require('./routes/reservas'));
 app.use('/api/pagamentos', require('./routes/pagamentos'));
 
-// ── Webhook InfinitePay ────────────────────────────────────
-// Rota pública: https://api.f5novacursos.com.br/webhook/infinitepay
+/* ── Webhook InfinitePay ─────────────────────────────────── */
 const { webhookInfinitePay } = require('./routes/pagamentos');
 app.post('/webhook/infinitepay', webhookInfinitePay);
 
-// ── Health check ───────────────────────────────────────────
+/* ── Health check ────────────────────────────────────────── */
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, ts: new Date().toISOString() });
 });
 
-// ── 404 ────────────────────────────────────────────────────
-app.use((req, res) => {
-  res.status(404).json({ error: 'Rota não encontrada' });
-});
+/* ── 404 ─────────────────────────────────────────────────── */
+app.use((req, res) => res.status(404).json({ error: 'Rota nao encontrada' }));
 
-// ── Error handler ──────────────────────────────────────────
+/* ── Error handler ───────────────────────────────────────── */
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(500).json({ error: err.message || 'Erro interno do servidor' });
+  res.status(500).json({ error: err.message || 'Erro interno' });
 });
 
-app.listen(PORT, () => {
-  console.log(`✅  F5 API rodando na porta ${PORT}`);
-});
+app.listen(PORT, () => console.log(`F5 API rodando na porta ${PORT}`));
