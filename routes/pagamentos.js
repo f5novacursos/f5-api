@@ -64,40 +64,40 @@ router.post('/link', async (req, res, next) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────
-   webhookInfinitePay — handler exportado para POST /webhook/infinitepay
-   Quando o pagamento é aprovado, muda status do aluno → 'ativo'
+   POST /api/pagamentos/matricula
+   Matrícula online: cria aluno (aguardando_pagamento) + link InfinitePay.
+   Body: { nome, whatsapp, curso, valor }
+   Retorna: { checkout_url, aluno_id }
 ───────────────────────────────────────────────────────────────── */
-async function webhookInfinitePay(req, res) {
+router.post('/matricula', async (req, res, next) => {
+  const client = await db.connect();
   try {
-    const { order_nsu, capture_method, transaction_nsu, receipt_url } = req.body;
-    console.log('[InfinitePay Webhook]', JSON.stringify(req.body));
+    await client.query('BEGIN');
 
-    if (!order_nsu) return res.status(400).json({ error: 'order_nsu ausente' });
-
-    const { rows } = await db.query('SELECT * FROM alunos WHERE order_nsu=$1', [order_nsu]);
-    if (!rows.length) {
-      console.warn('[Webhook] Aluno não encontrado para order_nsu:', order_nsu);
-      return res.status(200).json({ ok: true });
+    const { nome, whatsapp, curso, valor } = req.body;
+    if (!nome || !whatsapp || !curso) {
+      return res.status(400).json({ error: 'nome, whatsapp e curso são obrigatórios' });
     }
 
-    await db.query(
-      `UPDATE alunos SET
-         status          = 'ativo',
-         pagamento       = CURRENT_DATE,
-         forma_pgto      = $1,
-         transaction_nsu = $2,
-         receipt_url     = $3
-       WHERE order_nsu = $4`,
-      [capture_method || 'online', transaction_nsu || '', receipt_url || '', order_nsu]
+    const preco = parseFloat(valor) || 600;
+
+    // 1. Criar aluno com status aguardando_pagamento
+    const { rows } = await client.query(
+      `INSERT INTO alunos (nome, whatsapp, curso, status, status_pagamento, valor)
+       VALUES ($1,$2,$3,'aguardando_pagamento','pendente',$4) RETURNING *`,
+      [nome, whatsapp, curso, preco]
     );
+    const aluno = rows[0];
 
-    console.log(`[Webhook] ✅ Aluno ativado — order_nsu: ${order_nsu}`);
-    res.status(200).json({ ok: true });
-  } catch (err) {
-    console.error('[Webhook] Erro:', err);
-    res.status(400).json({ error: err.message });
-  }
-}
+    // 2. Gerar link InfinitePay
+    const order_nsu      = `student-${aluno.id}-${Date.now()}`;
+    const preco_centavos = Math.round(preco * 100);
 
-module.exports = router;
-module.exports.webhookInfinitePay = webhookInfinitePay;
+    const payload = {
+      handle: HANDLE,
+      order_nsu,
+      items: [{ quantity: 1, price: preco_centavos, description: curso }],
+      redirect_url: `https://f5novacursos.com.br/reserva.html?pago=1`,
+      webhook_url:  `${BASE_URL}/webhook/infinitepay`,
+      customer: {
+        name:         
