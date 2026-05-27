@@ -5,12 +5,7 @@ const HANDLE   = process.env.INFINITEPAY_HANDLE || 'f5novacursos';
 const IP_URL   = 'https://api.checkout.infinitepay.io/links';
 const BASE_URL = process.env.BASE_URL || 'https://api.f5novacursos.com.br';
 
-/* ─────────────────────────────────────────────────────────────────
-   POST /api/pagamentos/link
-   Gera link de pagamento InfinitePay para um aluno já cadastrado.
-   Body: { aluno_id }
-   Retorna: { checkout_url, order_nsu }
-───────────────────────────────────────────────────────────────── */
+/* POST /api/pagamentos/link */
 router.post('/link', async (req, res, next) => {
   try {
     const { aluno_id } = req.body;
@@ -56,17 +51,78 @@ router.post('/link', async (req, res, next) => {
     const checkout_url = data.url || data.checkout_url || data.link;
     if (!checkout_url) return res.status(502).json({ error: 'URL não retornada', data });
 
-    // Salvar order_nsu no aluno para rastrear
     await db.query('UPDATE alunos SET order_nsu=$1 WHERE id=$2', [order_nsu, aluno.id]);
-
     res.json({ checkout_url, order_nsu });
   } catch (err) { next(err); }
 });
 
-/* ─────────────────────────────────────────────────────────────────
-   webhookInfinitePay — handler exportado para POST /webhook/infinitepay
-   Quando o pagamento é aprovado, muda status do aluno → 'ativo'
-───────────────────────────────────────────────────────────────── */
+/* POST /api/pagamentos/matricula */
+router.post('/matricula', async (req, res, next) => {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { nome, whatsapp, curso, valor } = req.body;
+    if (!nome || !whatsapp || !curso) {
+      return res.status(400).json({ error: 'nome, whatsapp e curso são obrigatórios' });
+    }
+
+    const preco = parseFloat(valor) || 600;
+
+    const { rows } = await client.query(
+      `INSERT INTO alunos (nome, whatsapp, curso, status, valor)
+       VALUES ($1,$2,$3,'aguardando_pagamento',$4) RETURNING *`,
+      [nome, whatsapp, curso, preco]
+    );
+    const aluno = rows[0];
+
+    const order_nsu      = `student-${aluno.id}-${Date.now()}`;
+    const preco_centavos = Math.round(preco * 100);
+
+    const payload = {
+      handle: HANDLE,
+      order_nsu,
+      items: [{ quantity: 1, price: preco_centavos, description: curso }],
+      redirect_url: `https://f5novacursos.com.br/reserva.html?pago=1`,
+      webhook_url:  `${BASE_URL}/webhook/infinitepay`,
+      customer: {
+        name:         nome,
+        phone_number: '+55' + whatsapp.replace(/\D/g, ''),
+      },
+    };
+
+    const ipRes = await fetch(IP_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+
+    if (!ipRes.ok) {
+      const errText = await ipRes.text();
+      await client.query('ROLLBACK');
+      return res.status(502).json({ error: 'InfinitePay erro', detail: errText });
+    }
+
+    const data         = await ipRes.json();
+    const checkout_url = data.url || data.checkout_url || data.link;
+    if (!checkout_url) {
+      await client.query('ROLLBACK');
+      return res.status(502).json({ error: 'Checkout URL não retornada', data });
+    }
+
+    await client.query('UPDATE alunos SET order_nsu=$1 WHERE id=$2', [order_nsu, aluno.id]);
+    await client.query('COMMIT');
+
+    console.log(`[Matricula] Aluno ${aluno.id} criado, checkout: ${checkout_url}`);
+    res.status(201).json({ checkout_url, aluno_id: aluno.id, order_nsu });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 async function webhookInfinitePay(req, res) {
   try {
     const { order_nsu, capture_method, transaction_nsu, receipt_url } = req.body;
@@ -91,7 +147,7 @@ async function webhookInfinitePay(req, res) {
       [capture_method || 'online', transaction_nsu || '', receipt_url || '', order_nsu]
     );
 
-    console.log(`[Webhook] ✅ Aluno ativado — order_nsu: ${order_nsu}`);
+    console.log(`[Webhook] Aluno ativado - order_nsu: ${order_nsu}`);
     res.status(200).json({ ok: true });
   } catch (err) {
     console.error('[Webhook] Erro:', err);

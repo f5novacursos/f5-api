@@ -33,13 +33,15 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/reservas — nova reserva (chamada pelo formulário público do site)
+// status aceito: 'reserva' (padrão) | 'aguardando_pagamento' (matrícula online)
 router.post('/', async (req, res, next) => {
   try {
-    const { nome, whatsapp, interesse, turma_pref, origem } = req.body;
+    const { nome, whatsapp, interesse, turma_pref, origem, status } = req.body;
+    const statusValido = ['reserva', 'aguardando_pagamento'].includes(status) ? status : 'reserva';
     const { rows } = await db.query(
-      `INSERT INTO reservas (nome, whatsapp, interesse, turma_pref, origem)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [nome, whatsapp, interesse, turma_pref, origem ?? 'formulario_site']
+      `INSERT INTO reservas (nome, whatsapp, interesse, turma_pref, origem, status)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [nome, whatsapp, interesse, turma_pref, origem ?? 'formulario_site', statusValido]
     );
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
