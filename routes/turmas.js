@@ -79,7 +79,7 @@ router.put('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PATCH /api/turmas/:id/vagas — atualizar so as vagas
+// PATCH /api/turmas/:id/vagas — atualizar vagas ocupadas
 router.patch('/:id/vagas', async (req, res, next) => {
   try {
     const { vagas_ocupadas } = req.body;
