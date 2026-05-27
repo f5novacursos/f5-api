@@ -33,20 +33,21 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/reservas — nova reserva (chamada pelo formulário público do site)
+// status aceito: 'reserva' (padrão) | 'aguardando_pagamento' (matrícula online)
 router.post('/', async (req, res, next) => {
   try {
-    const { nome, whatsapp, interesse, turma_pref, origem } = req.body;
+    const { nome, whatsapp, interesse, turma_pref, origem, status } = req.body;
+    const statusValido = ['reserva', 'aguardando_pagamento'].includes(status) ? status : 'reserva';
     const { rows } = await db.query(
-      `INSERT INTO reservas (nome, whatsapp, interesse, turma_pref, origem)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [nome, whatsapp, interesse, turma_pref, origem ?? 'formulario_site']
+      `INSERT INTO reservas (nome, whatsapp, interesse, turma_pref, origem, status)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [nome, whatsapp, interesse, turma_pref, origem ?? 'formulario_site', statusValido]
     );
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
 
 // POST /api/reservas/:id/converter — converter reserva em aluno
-// Remove a reserva e cria o aluno automaticamente
 router.post('/:id/converter', async (req, res, next) => {
   const client = await db.connect();
   try {
@@ -57,13 +58,19 @@ router.post('/:id/converter', async (req, res, next) => {
     if (!r.length) return res.status(404).json({ error: 'Reserva não encontrada' });
     const reserva = r[0];
 
-    // Criar aluno com dados da reserva + dados extras enviados no body
-    const { cpf, data_nasc, email, endereco, turma_id, status, pagamento, valor } = req.body;
+    // Criar aluno — status_pagamento sempre começa como 'pendente'
+    const { cpf, data_nasc, email, endereco, turma_id, status, pagamento, valor, status_pagamento } = req.body;
     const { rows: a } = await client.query(
-      `INSERT INTO alunos (nome, whatsapp, cpf, data_nasc, email, endereco, curso, turma_id, status, pagamento, valor)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [reserva.nome, reserva.whatsapp, cpf, data_nasc, email, endereco,
-       reserva.interesse, turma_id, status ?? 'ativo', pagamento, valor]
+      `INSERT INTO alunos (nome, whatsapp, cpf, data_nasc, email, endereco, curso, turma_id, status, pagamento, valor, status_pagamento)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [
+        reserva.nome, reserva.whatsapp, cpf, data_nasc, email, endereco,
+        reserva.interesse, turma_id,
+        status ?? 'ativo',
+        pagamento ?? null,
+        valor,
+        status_pagamento ?? 'pendente'   // <-- padrão: pendente
+      ]
     );
 
     // Incrementar vagas
@@ -78,18 +85,4 @@ router.post('/:id/converter', async (req, res, next) => {
     res.status(201).json({ aluno: a[0] });
   } catch (err) {
     await client.query('ROLLBACK');
-    next(err);
-  } finally {
-    client.release();
-  }
-});
-
-// DELETE /api/reservas/:id — excluir reserva
-router.delete('/:id', async (req, res, next) => {
-  try {
-    await db.query('DELETE FROM reservas WHERE id=$1', [req.params.id]);
-    res.json({ ok: true });
-  } catch (err) { next(err); }
-});
-
-module.exports = router;
+    next
