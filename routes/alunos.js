@@ -1,10 +1,10 @@
 const router = require('express').Router();
 const db = require('../db');
 
-// GET /api/alunos — listar alunos (filtros: busca, status, turma_id)
+// GET /api/alunos — listar alunos (filtros: busca, status, turma_id, status_pagamento)
 router.get('/', async (req, res, next) => {
   try {
-    const { busca, status, turma_id } = req.query;
+    const { busca, status, turma_id, status_pagamento } = req.query;
     let query = `
       SELECT a.*, t.turma AS turma_nome, t.nome AS curso_nome
       FROM alunos a
@@ -23,6 +23,10 @@ router.get('/', async (req, res, next) => {
     if (turma_id) {
       params.push(turma_id);
       query += ` AND a.turma_id = $${params.length}`;
+    }
+    if (status_pagamento) {
+      params.push(status_pagamento);
+      query += ` AND a.status_pagamento = $${params.length}`;
     }
 
     query += ' ORDER BY a.nome ASC';
@@ -48,13 +52,12 @@ router.get('/:id', async (req, res, next) => {
 // POST /api/alunos — cadastrar aluno
 router.post('/', async (req, res, next) => {
   try {
-    const { nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor } = req.body;
+    const { nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, status_pagamento } = req.body;
     const { rows } = await db.query(
-      `INSERT INTO alunos (nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status ?? 'ativo', pagamento, valor]
+      `INSERT INTO alunos (nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, status_pagamento)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status ?? 'ativo', pagamento, valor, status_pagamento ?? 'pendente']
     );
-    // Incrementar vagas_ocupadas na turma
     if (turma_id) {
       await db.query('UPDATE turmas SET vagas_ocupadas = vagas_ocupadas + 1 WHERE id = $1', [turma_id]);
     }
@@ -65,19 +68,19 @@ router.post('/', async (req, res, next) => {
 // PUT /api/alunos/:id — atualizar aluno
 router.put('/:id', async (req, res, next) => {
   try {
-    const { nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, cert_hash } = req.body;
+    const { nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, cert_hash, status_pagamento } = req.body;
     const { rows } = await db.query(
       `UPDATE alunos SET nome=$1, cpf=$2, data_nasc=$3, email=$4, whatsapp=$5, endereco=$6,
-       curso=$7, turma_id=$8, status=$9, pagamento=$10, valor=$11, cert_hash=$12
-       WHERE id=$13 RETURNING *`,
-      [nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, cert_hash ?? '', req.params.id]
+       curso=$7, turma_id=$8, status=$9, pagamento=$10, valor=$11, cert_hash=$12, status_pagamento=$13
+       WHERE id=$14 RETURNING *`,
+      [nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, cert_hash ?? '', status_pagamento ?? 'pendente', req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Aluno não encontrado' });
     res.json(rows[0]);
   } catch (err) { next(err); }
 });
 
-// PATCH /api/alunos/:id/status — atualizar só o status
+// PATCH /api/alunos/:id/status — atualizar só o status do aluno
 router.patch('/:id/status', async (req, res, next) => {
   try {
     const { status } = req.body;
@@ -89,10 +92,21 @@ router.patch('/:id/status', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// PATCH /api/alunos/:id/pagamento — atualizar só o status do pagamento
+router.patch('/:id/pagamento', async (req, res, next) => {
+  try {
+    const { status_pagamento, pagamento } = req.body;
+    const { rows } = await db.query(
+      'UPDATE alunos SET status_pagamento=$1, pagamento=$2 WHERE id=$3 RETURNING *',
+      [status_pagamento, pagamento ?? null, req.params.id]
+    );
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
 // DELETE /api/alunos/:id — excluir aluno
 router.delete('/:id', async (req, res, next) => {
   try {
-    // Buscar turma_id antes de deletar para decrementar vaga
     const { rows } = await db.query('SELECT turma_id FROM alunos WHERE id=$1', [req.params.id]);
     if (rows.length && rows[0].turma_id) {
       await db.query('UPDATE turmas SET vagas_ocupadas = GREATEST(vagas_ocupadas - 1, 0) WHERE id=$1', [rows[0].turma_id]);
