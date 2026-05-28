@@ -18,8 +18,8 @@ router.post('/', async (req, res) => {
     }
 
     await transporter.sendMail({
-      from:    `"F5 Nova Cursos" <${process.env.MAIL_USER}>`,
-      to:      process.env.MAIL_USER,
+      from:    `"${nome} via F5 Nova Cursos" <${process.env.MAIL_USER}>`,
+      to:      process.env.MAIL_TO || process.env.MAIL_USER,
       replyTo: email,
       subject: `✉️ ${assunto || 'Novo contato'} — F5 Nova Cursos`,
       html: `
