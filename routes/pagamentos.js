@@ -1,6 +1,14 @@
 const router = require('express').Router();
 const db     = require('../db');
 
+/* Auto-migration: coluna checkout_url em alunos */
+(async () => {
+  try {
+    await db.query("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS checkout_url VARCHAR(600)");
+  } catch (e) { console.warn('[pagamentos] migration:', e.message); }
+})();
+
+
 const HANDLE   = process.env.INFINITEPAY_HANDLE || 'f5novacursos';
 const IP_URL   = 'https://api.checkout.infinitepay.io/links';
 const BASE_URL = process.env.BASE_URL || 'https://api.f5novacursos.com.br';
@@ -51,8 +59,9 @@ router.post('/link', async (req, res, next) => {
     const checkout_url = data.url || data.checkout_url || data.link;
     if (!checkout_url) return res.status(502).json({ error: 'URL não retornada', data });
 
-    await db.query('UPDATE alunos SET order_nsu=$1 WHERE id=$2', [order_nsu, aluno.id]);
-    res.json({ checkout_url, order_nsu });
+    const short_url = BASE_URL + '/pay/' + aluno.id;
+    await db.query('UPDATE alunos SET order_nsu=$1, checkout_url=$2 WHERE id=$3', [order_nsu, checkout_url, aluno.id]);
+    res.json({ checkout_url, short_url, order_nsu });
   } catch (err) { next(err); }
 });
 
@@ -110,11 +119,12 @@ router.post('/matricula', async (req, res, next) => {
       return res.status(502).json({ error: 'Checkout URL não retornada', data });
     }
 
-    await client.query('UPDATE alunos SET order_nsu=$1 WHERE id=$2', [order_nsu, aluno.id]);
+    const short_url_mat = BASE_URL + '/pay/' + aluno.id;
+    await client.query('UPDATE alunos SET order_nsu=$1, checkout_url=$2 WHERE id=$3', [order_nsu, checkout_url, aluno.id]);
     await client.query('COMMIT');
 
     console.log(`[Matricula] Aluno ${aluno.id} criado, checkout: ${checkout_url}`);
-    res.status(201).json({ checkout_url, aluno_id: aluno.id, order_nsu });
+    res.status(201).json({ checkout_url, short_url: short_url_mat, aluno_id: aluno.id, order_nsu });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
@@ -155,5 +165,21 @@ async function webhookInfinitePay(req, res) {
   }
 }
 
+
+/* GET /pay/:id — redirect curto para checkout InfinitePay */
+async function payRedirect(req, res) {
+  try {
+    const { rows } = await db.query('SELECT checkout_url FROM alunos WHERE id=$1', [req.params.id]);
+    if (!rows.length || !rows[0].checkout_url) {
+      return res.status(404).send('Link de pagamento nao encontrado ou expirado.');
+    }
+    res.redirect(302, rows[0].checkout_url);
+  } catch (err) {
+    console.error('[payRedirect]', err);
+    res.status(500).send('Erro interno.');
+  }
+}
+
 module.exports = router;
 module.exports.webhookInfinitePay = webhookInfinitePay;
+module.exports.payRedirect = payRedirect;

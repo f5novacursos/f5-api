@@ -21,9 +21,10 @@ app.use('/api/cursos',     require('./routes/cursos'));
 app.use('/api/pagamentos', require('./routes/pagamentos'));
 app.use('/api/contato',    require('./routes/contato'));
 
-// ── Webhook InfinitePay ────────────────────────────────────
-const { webhookInfinitePay } = require('./routes/pagamentos');
+// ── Webhook InfinitePay + redirect curto ──────────────────
+const { webhookInfinitePay, payRedirect } = require('./routes/pagamentos');
 app.post('/webhook/infinitepay', webhookInfinitePay);
+app.get('/pay/:id', payRedirect);
 
 // ── Health check ───────────────────────────────────────────
 app.get('/api/health', (req, res) => {
