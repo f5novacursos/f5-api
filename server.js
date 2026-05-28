@@ -17,6 +17,7 @@ app.use(express.json());
 app.use('/api/turmas',     require('./routes/turmas'));
 app.use('/api/alunos',     require('./routes/alunos'));
 app.use('/api/reservas',   require('./routes/reservas'));
+app.use('/api/cursos',     require('./routes/cursos'));
 app.use('/api/pagamentos', require('./routes/pagamentos'));
 app.use('/api/contato',    require('./routes/contato'));
 
