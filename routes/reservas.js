@@ -54,13 +54,13 @@ router.post('/:id/converter', async (req, res, next) => {
     const reserva = r[0];
 
     // Criar aluno — status_pagamento sempre comeca como 'pendente'
-    const { cpf, data_nasc, email, endereco, turma_id, status, pagamento, valor, status_pagamento } = req.body;
+    const { cpf, data_nasc, email, endereco, turma_id, curso, status, pagamento, valor, status_pagamento } = req.body;
     const { rows: a } = await client.query(
       'INSERT INTO alunos (nome, whatsapp, cpf, data_nasc, email, endereco, curso, turma_id, status, pagamento, valor, status_pagamento) ' +
       'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
       [
         reserva.nome, reserva.whatsapp, cpf, data_nasc, email, endereco,
-        reserva.interesse, turma_id,
+        curso || reserva.interesse, turma_id,
         status ?? 'ativo',
         pagamento ?? null,
         valor,
