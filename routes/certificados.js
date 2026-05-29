@@ -37,7 +37,7 @@ router.get('/', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT a.id, a.nome, a.cpf, a.curso, a.cert_hash, a.cert_emitido,
-             t.data_fim, t.nome AS turma_nome
+             t.data_fim, t.nome AS turma_nome, t.carga AS turma_carga
       FROM alunos a
       LEFT JOIN turmas t ON t.id = a.turma_id
       WHERE (REPLACE(REPLACE(REPLACE(a.cpf, '.', ''), '-', ''), ' ', '') = $1
@@ -61,10 +61,11 @@ router.get('/', async (req, res) => {
     };
 
     const cursos = result.rows.map(r => {
-      const cargaInfo = r.curso ? obterCarga(r.curso) : '60h';
+      const nomeCurso = r.curso || r.turma_nome || 'Informática Profissional + IA';
+      const cargaInfo = r.turma_carga ? r.turma_carga + 'h' : obterCarga(nomeCurso);
       return {
         id:       r.cert_hash,
-        nome:     r.curso || 'Informática Profissional + IA',
+        nome:     nomeCurso,
         carga:    cargaInfo,
         conclusao: fmtData(r.data_fim || r.cert_emitido)
       };
@@ -85,7 +86,7 @@ router.get('/validar', async (req, res) => {
 
   try {
     const result = await pool.query(`
-      SELECT a.nome, a.curso, a.cert_hash, a.cert_emitido, t.data_fim
+      SELECT a.nome, a.curso, a.cert_hash, a.cert_emitido, t.data_fim, t.nome AS turma_nome, t.carga AS turma_carga
       FROM alunos a
       LEFT JOIN turmas t ON t.id = a.turma_id
       WHERE a.cert_hash = $1
@@ -102,12 +103,13 @@ router.get('/validar', async (req, res) => {
       return `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}/${dt.getFullYear()}`;
     };
 
-    const cargaInfo = r.curso ? obterCarga(r.curso) : '60h';
+    const nomeCurso = r.curso || r.turma_nome || 'Informática Profissional + IA';
+    const cargaInfo = r.turma_carga ? r.turma_carga + 'h' : obterCarga(nomeCurso);
 
     res.json({
       valido:    true,
       aluno:     r.nome,
-      curso:     r.curso || 'Informática Profissional + IA',
+      curso:     nomeCurso,
       carga:     cargaInfo,
       conclusao: fmtData(r.data_fim || r.cert_emitido),
       codigo:    r.cert_hash
