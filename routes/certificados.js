@@ -66,7 +66,7 @@ router.get('/', async (req, res) => {
         id:       r.cert_hash,
         nome:     r.curso || 'Informática Profissional + IA',
         carga:    cargaInfo,
-        conclusao: fmtData(r.cert_emitido || r.data_fim)
+        conclusao: fmtData(r.data_fim || r.cert_emitido)
       };
     });
 
@@ -109,7 +109,7 @@ router.get('/validar', async (req, res) => {
       aluno:     r.nome,
       curso:     r.curso || 'Informática Profissional + IA',
       carga:     cargaInfo,
-      conclusao: fmtData(r.cert_emitido || r.data_fim),
+      conclusao: fmtData(r.data_fim || r.cert_emitido),
       codigo:    r.cert_hash
     });
   } catch (e) {
