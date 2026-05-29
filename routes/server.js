@@ -18,6 +18,8 @@ app.use('/api/turmas',     require('./routes/turmas'));
 app.use('/api/alunos',     require('./routes/alunos'));
 app.use('/api/reservas',   require('./routes/reservas'));
 app.use('/api/pagamentos', require('./routes/pagamentos'));
+app.use('/api/certificado', require('./routes/certificados'));
+app.use('/api/cursos',     require('./routes/cursos'));
 
 // ── Webhook InfinitePay ────────────────────────────────────
 // Rota pública: https://api.f5novacursos.com.br/webhook/infinitepay
