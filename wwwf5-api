@@ -17,14 +17,14 @@ app.use(express.json());
 app.use('/api/turmas',     require('./routes/turmas'));
 app.use('/api/alunos',     require('./routes/alunos'));
 app.use('/api/reservas',   require('./routes/reservas'));
-app.use('/api/pagamentos', require('./routes/pagamentos'));
-app.use('/api/certificado', require('./routes/certificados'));
 app.use('/api/cursos',     require('./routes/cursos'));
+app.use('/api/pagamentos', require('./routes/pagamentos'));
+app.use('/api/contato',    require('./routes/contato'));
 
-// ── Webhook InfinitePay ────────────────────────────────────
-// Rota pública: https://api.f5novacursos.com.br/webhook/infinitepay
-const { webhookInfinitePay } = require('./routes/pagamentos');
+// ── Webhook InfinitePay + redirect curto ──────────────────
+const { webhookInfinitePay, payRedirect } = require('./routes/pagamentos');
 app.post('/webhook/infinitepay', webhookInfinitePay);
+app.get('/pay/:id', payRedirect);
 
 // ── Health check ───────────────────────────────────────────
 app.get('/api/health', (req, res) => {

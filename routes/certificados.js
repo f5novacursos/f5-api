@@ -60,7 +60,7 @@ router.get('/', async (req, res) => {
 
     const cursos = result.rows.map(r => {
       const nomeCurso = r.curso || r.turma_nome || 'Informática Profissional + IA';
-      const cargaInfo = r.turma_carga ? r.turma_carga + 'h' : obterCarga(nomeCurso);
+      const cargaInfo = r.turma_carga ? (String(r.turma_carga).endsWith('h') ? r.turma_carga : r.turma_carga + 'h') : obterCarga(nomeCurso);
       return {
         id:       r.cert_hash,
         nome:     nomeCurso,
@@ -102,7 +102,7 @@ router.get('/validar', async (req, res) => {
     };
 
     const nomeCurso = r.curso || r.turma_nome || 'Informática Profissional + IA';
-    const cargaInfo = r.turma_carga ? r.turma_carga + 'h' : obterCarga(nomeCurso);
+    const cargaInfo = r.turma_carga ? (String(r.turma_carga).endsWith('h') ? r.turma_carga : r.turma_carga + 'h') : obterCarga(nomeCurso);
 
     res.json({
       valido:    true,
