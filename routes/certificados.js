@@ -6,9 +6,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { Pool } = require('pg');
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = require('../db');
 
 // Auto-migration: garante colunas cert_hash e cert_emitido na tabela alunos
 async function migrateCertColumns() {
