@@ -21,6 +21,7 @@ app.use('/api/cursos',      require('./routes/cursos'));
 app.use('/api/pagamentos',  require('./routes/pagamentos'));
 app.use('/api/certificado', require('./routes/certificados'));
 app.use('/api/contato',     require('./routes/contato'));
+app.use('/api',             require('./routes/portfolio'));
 
 // ── Webhook InfinitePay + redirect curto ──────────────────
 const { webhookInfinitePay, payRedirect } = require('./routes/pagamentos');
