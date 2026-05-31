@@ -4,13 +4,9 @@ const db = require('../db');
 // GET /api/alunos
 router.get('/', async (req, res, next) => {
   try {
-    // Auto-avanca: ativo -> formado APENAS quando turma está encerrada
-    // (não avança por data para permitir que admin mova alunos de turma manualmente)
-    await db.query(
-      "UPDATE alunos a SET status = 'formado' FROM turmas t " +
-      "WHERE a.turma_id = t.id AND a.status = 'ativo' " +
-      "AND t.status = 'encerrada'"
-    );
+    // Auto-advance removido do GET para não sobrescrever edições manuais do admin.
+    // Use: PUT /api/alunos/:id para alterar status manualmente.
+    // Ou rode o UPDATE direto no banco quando necessário.
 
     const { busca, status, turma_id, status_pagamento } = req.query;
     let query = 'SELECT a.*, t.turma AS turma_nome, t.nome AS curso_nome FROM alunos a LEFT JOIN turmas t ON a.turma_id = t.id WHERE 1=1';
