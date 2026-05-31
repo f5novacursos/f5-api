@@ -47,4 +47,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Erro interno do servidor' });
 });
 
-app.listen(PORT, () => 
+app.listen(PORT, () => {
+  console.log(`✅  F5 API rodando na porta ${PORT}`);
+});
