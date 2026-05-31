@@ -20,6 +20,7 @@ app.use('/api/reservas',    require('./routes/reservas'));
 app.use('/api/cursos',      require('./routes/cursos'));
 app.use('/api/pagamentos',  require('./routes/pagamentos'));
 app.use('/api/certificado', require('./routes/certificados'));
+app.use('/api/interessados', require('./routes/interessados'));
 app.use('/api/contato',     require('./routes/contato'));
 app.use('/api',             require('./routes/portfolio'));
 
@@ -28,22 +29,4 @@ const { webhookInfinitePay, payRedirect } = require('./routes/pagamentos');
 app.post('/webhook/infinitepay', webhookInfinitePay);
 app.get('/pay/:id', payRedirect);
 
-// ── Health check ───────────────────────────────────────────
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true, ts: new Date().toISOString() });
-});
-
-// ── 404 ────────────────────────────────────────────────────
-app.use((req, res) => {
-  res.status(404).json({ error: 'Rota não encontrada' });
-});
-
-// ── Error handler ──────────────────────────────────────────
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: err.message || 'Erro interno do servidor' });
-});
-
-app.listen(PORT, () => {
-  console.log(`✅  F5 API rodando na porta ${PORT}`);
-});
+app.listen(PORT, () => console.log(`F5 API rodando na porta ${PORT}`));
