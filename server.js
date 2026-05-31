@@ -23,10 +23,29 @@ app.use('/api/certificado', require('./routes/certificados'));
 app.use('/api/interessados', require('./routes/interessados'));
 app.use('/api/contato',     require('./routes/contato'));
 app.use('/api',             require('./routes/portfolio'));
+app.use('/api',             require('./routes/clientes-web'));
 
 // ── Webhook InfinitePay + redirect curto ──────────────────
 const { webhookInfinitePay, payRedirect } = require('./routes/pagamentos');
 app.post('/webhook/infinitepay', webhookInfinitePay);
 app.get('/pay/:id', payRedirect);
 
-app.listen(PORT, () => console.log(`F5 API rodando na porta ${PORT}`));
+// ── Health check ───────────────────────────────────────────
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, ts: new Date().toISOString() });
+});
+
+// ── 404 ────────────────────────────────────────────────────
+app.use((req, res) => {
+  res.status(404).json({ error: 'Rota não encontrada' });
+});
+
+// ── Error handler ──────────────────────────────────────────
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: err.message || 'Erro interno do servidor' });
+});
+
+app.listen(PORT, () => {
+  console.log(`✅  F5 API rodando na porta ${PORT}`);
+});
