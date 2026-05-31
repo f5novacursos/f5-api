@@ -21,6 +21,7 @@ app.use('/api/cursos',      require('./routes/cursos'));
 app.use('/api/pagamentos',  require('./routes/pagamentos'));
 app.use('/api/certificado', require('./routes/certificados'));
 app.use('/api/interessados', require('./routes/interessados'));
+app.use('/api/financeiro',  require('./routes/financeiro'));
 app.use('/api/contato',     require('./routes/contato'));
 app.use('/api',             require('./routes/portfolio'));
 app.use('/api',             require('./routes/clientes-web'));
@@ -46,6 +47,4 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Erro interno do servidor' });
 });
 
-app.listen(PORT, () => {
-  console.log(`✅  F5 API rodando na porta ${PORT}`);
-});
+app.listen(PORT, () => 
