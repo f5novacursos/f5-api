@@ -4,11 +4,12 @@ const db = require('../db');
 // GET /api/alunos
 router.get('/', async (req, res, next) => {
   try {
-    // Auto-avanca: ativo -> formado quando data_fim da turma passou
+    // Auto-avanca: ativo -> formado APENAS quando turma está encerrada
+    // (não avança por data para permitir que admin mova alunos de turma manualmente)
     await db.query(
       "UPDATE alunos a SET status = 'formado' FROM turmas t " +
       "WHERE a.turma_id = t.id AND a.status = 'ativo' " +
-      "AND t.data_fim IS NOT NULL AND t.data_fim < CURRENT_DATE"
+      "AND t.status = 'encerrada'"
     );
 
     const { busca, status, turma_id, status_pagamento } = req.query;
