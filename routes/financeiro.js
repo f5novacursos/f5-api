@@ -20,6 +20,8 @@ db.query(`
 
 db.query(`ALTER TABLE financeiro ADD COLUMN IF NOT EXISTS cliente VARCHAR(200) NOT NULL DEFAULT ''`)
   .catch(() => {});
+db.query(`ALTER TABLE financeiro ADD COLUMN IF NOT EXISTS recibo_url VARCHAR(600) DEFAULT ''`)
+  .catch(() => {});
 
 /* ── GET /api/financeiro ─────────────────────────────────── */
 router.get('/', async (req, res) => {
@@ -163,12 +165,12 @@ router.get('/resumo', async (req, res) => {
 /* ── POST /api/financeiro ────────────────────────────────── */
 router.post('/', async (req, res) => {
   try {
-    const { tipo, categoria, cliente='', descricao='', valor, data, status='pago', obs='' } = req.body;
+    const { tipo, categoria, cliente='', descricao='', valor, data, status='pago', obs='', recibo_url='' } = req.body;
     if (!tipo || !valor || !data) return res.status(400).json({ erro: 'tipo, valor e data são obrigatórios' });
     const { rows } = await db.query(`
-      INSERT INTO financeiro (tipo, categoria, cliente, descricao, valor, data, status, obs)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
-    `, [tipo, categoria||'', cliente, descricao, valor, data, status, obs]);
+      INSERT INTO financeiro (tipo, categoria, cliente, descricao, valor, data, status, obs, recibo_url)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
+    `, [tipo, categoria||'', cliente, descricao, valor, data, status, obs, recibo_url]);
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ erro: err.message }); }
 });
