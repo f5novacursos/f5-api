@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
 
-/* Auto-migration */
+/* Auto-migration — cria tabela e adiciona colunas novas se não existirem */
 db.query(`
   CREATE TABLE IF NOT EXISTS clientes_web (
     id                    SERIAL PRIMARY KEY,
@@ -29,6 +29,10 @@ db.query(`
   )
 `).catch(err => console.error('[clientes-web] migration erro:', err.message));
 
+/* Adiciona coluna vencimento_dominio se não existir (migração incremental) */
+db.query(`ALTER TABLE clientes_web ADD COLUMN IF NOT EXISTS vencimento_dominio DATE`)
+  .catch(err => console.error('[clientes-web] migration vencimento_dominio:', err.message));
+
 /* GET /api/clientes-web */
 router.get('/clientes-web', async (req, res) => {
   try {
@@ -48,6 +52,7 @@ router.post('/clientes-web', async (req, res) => {
       proximo_vencimento=null, status_pgto='pago', status='ativo', obs='',
       exibir_portfolio=false, exibir_sistemas=false,
       portfolio_foto='', portfolio_link='', portfolio_tipo='', portfolio_descricao='',
+      vencimento_dominio=null,
     } = req.body;
 
     if (!nome?.trim()) return res.status(400).json({ erro: 'Nome obrigatório.' });
@@ -57,13 +62,15 @@ router.post('/clientes-web', async (req, res) => {
         (nome,whatsapp,dominio,plano,periodicidade,setup_valor,mensalidade,
          data_inicio,data_primeira_cobranca,proximo_vencimento,
          status_pgto,status,obs,exibir_portfolio,exibir_sistemas,
-         portfolio_foto,portfolio_link,portfolio_tipo,portfolio_descricao)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+         portfolio_foto,portfolio_link,portfolio_tipo,portfolio_descricao,
+         vencimento_dominio)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
        RETURNING *`,
       [nome.trim(),whatsapp,dominio,plano,periodicidade,setup_valor,mensalidade,
        data_inicio||null,data_primeira_cobranca||null,proximo_vencimento||null,
        status_pgto,status,obs,Boolean(exibir_portfolio),Boolean(exibir_sistemas),
-       portfolio_foto,portfolio_link,portfolio_tipo,portfolio_descricao]
+       portfolio_foto,portfolio_link,portfolio_tipo,portfolio_descricao,
+       vencimento_dominio||null]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -81,6 +88,7 @@ router.put('/clientes-web/:id', async (req, res) => {
       proximo_vencimento, status_pgto, status, obs,
       exibir_portfolio, exibir_sistemas,
       portfolio_foto, portfolio_link, portfolio_tipo, portfolio_descricao,
+      vencimento_dominio,
     } = req.body;
 
     const { rows } = await db.query(
@@ -103,8 +111,9 @@ router.put('/clientes-web/:id', async (req, res) => {
         portfolio_foto        = COALESCE($16, portfolio_foto),
         portfolio_link        = COALESCE($17, portfolio_link),
         portfolio_tipo        = COALESCE($18, portfolio_tipo),
-        portfolio_descricao   = COALESCE($19, portfolio_descricao)
-      WHERE id = $20 RETURNING *`,
+        portfolio_descricao   = COALESCE($19, portfolio_descricao),
+        vencimento_dominio    = COALESCE($20, vencimento_dominio)
+      WHERE id = $21 RETURNING *`,
       [
         nome?.trim()??null, whatsapp??null, dominio??null, plano??null,
         periodicidade??null, setup_valor??null, mensalidade??null,
@@ -114,6 +123,7 @@ router.put('/clientes-web/:id', async (req, res) => {
         exibir_sistemas!=null  ? Boolean(exibir_sistemas)  : null,
         portfolio_foto??null, portfolio_link??null,
         portfolio_tipo??null, portfolio_descricao??null,
+        vencimento_dominio||null,
         id,
       ]
     );
