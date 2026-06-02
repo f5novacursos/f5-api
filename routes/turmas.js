@@ -1,14 +1,25 @@
 const router = require('express').Router();
 const db = require('../db');
 
+// Auto-migration: garante que a coluna foto existe na tabela turmas
+db.query("ALTER TABLE turmas ADD COLUMN IF NOT EXISTS foto VARCHAR(500)")
+  .catch(err => console.error('[turmas] migration foto:', err.message));
+
 // GET /api/turmas — listar turmas (com filtro opcional por status)
 router.get('/', async (req, res, next) => {
   try {
-    // Auto-avanca status: aberta -> formando quando data_ini ja passou
+    // Auto-avanca status:
+    //   aberta   → formando  quando data_ini JÁ PASSOU (exclusive hoje)
+    //   formando → encerrada quando data_fim JÁ PASSOU (exclusive hoje)
     await db.query(
       "UPDATE turmas SET status = 'formando' " +
       "WHERE status = 'aberta' " +
       "AND data_ini IS NOT NULL AND data_ini < CURRENT_DATE"
+    );
+    await db.query(
+      "UPDATE turmas SET status = 'encerrada' " +
+      "WHERE status = 'formando' " +
+      "AND data_fim IS NOT NULL AND data_fim < CURRENT_DATE"
     );
 
     const { status, nome } = req.query;
@@ -38,6 +49,12 @@ router.get('/:id', async (req, res, next) => {
       "UPDATE turmas SET status = 'formando' " +
       "WHERE id = $1 AND status = 'aberta' " +
       "AND data_ini IS NOT NULL AND data_ini < CURRENT_DATE",
+      [req.params.id]
+    );
+    await db.query(
+      "UPDATE turmas SET status = 'encerrada' " +
+      "WHERE id = $1 AND status = 'formando' " +
+      "AND data_fim IS NOT NULL AND data_fim < CURRENT_DATE",
       [req.params.id]
     );
 
