@@ -71,11 +71,13 @@ router.post('/', async (req, res, next) => {
     const nullDate = v => (v && String(v).trim() !== '' ? v : null);
     const nullInt  = v => (v !== undefined && v !== null && String(v).trim() !== '' ? parseInt(v) : null);
 
-    // 1. INSERT sem codigo — usa id gerado para montar o codigo depois
+    // 1. INSERT com codigo temporário único (TEMP-timestamp) pois codigo é NOT NULL + UNIQUE
+    const tempCodigo = `TEMP-${Date.now()}`;
     const { rows: ins } = await db.query(
-      'INSERT INTO turmas (nome, turma, horario, dias, data_ini, data_fim, carga, vagas_total, vagas_ocupadas, status, foto) ' +
-      'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id',
+      'INSERT INTO turmas (codigo, nome, turma, horario, dias, data_ini, data_fim, carga, vagas_total, vagas_ocupadas, status, foto) ' +
+      'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id',
       [
+        tempCodigo,
         b.nome    || null,
         b.turma   || null,
         b.horario || null,
@@ -93,7 +95,7 @@ router.post('/', async (req, res, next) => {
     const ano   = new Date().getFullYear();
     const codigo = `TUR-${ano}-${String(newId).padStart(3, '0')}`;
 
-    // 2. UPDATE codigo usando o id — sempre único
+    // 2. UPDATE para o codigo final baseado no id — garantidamente único
     const { rows } = await db.query(
       'UPDATE turmas SET codigo=$1 WHERE id=$2 RETURNING *',
       [codigo, newId]
