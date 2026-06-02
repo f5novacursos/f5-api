@@ -71,32 +71,32 @@ router.post('/', async (req, res, next) => {
     const nullDate = v => (v && String(v).trim() !== '' ? v : null);
     const nullInt  = v => (v !== undefined && v !== null && String(v).trim() !== '' ? parseInt(v) : null);
 
-    // Gera código único no servidor — evita conflito com o que o frontend calculou
-    const ano = new Date().getFullYear();
-    const { rows: seqRows } = await db.query(
-      "SELECT COALESCE(MAX(CAST(NULLIF(REGEXP_REPLACE(codigo, '^TUR-\\\\d{4}-', ''), '') AS INTEGER)), 0) + 1 AS prox FROM turmas WHERE codigo LIKE $1",
-      [`TUR-${ano}-%`]
-    );
-    const seq = String(seqRows[0]?.prox || 1).padStart(3, '0');
-    const codigo = `TUR-${ano}-${seq}`;
-
-    const { rows } = await db.query(
-      'INSERT INTO turmas (codigo, nome, turma, horario, dias, data_ini, data_fim, carga, vagas_total, vagas_ocupadas, status, foto) ' +
-      'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
+    // 1. INSERT sem codigo — usa id gerado para montar o codigo depois
+    const { rows: ins } = await db.query(
+      'INSERT INTO turmas (nome, turma, horario, dias, data_ini, data_fim, carga, vagas_total, vagas_ocupadas, status, foto) ' +
+      'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id',
       [
-        codigo,
-        b.nome   || null,
-        b.turma  || null,
-        b.horario|| null,
-        b.dias   || null,
+        b.nome    || null,
+        b.turma   || null,
+        b.horario || null,
+        b.dias    || null,
         nullDate(b.data_ini),
         nullDate(b.data_fim),
         nullInt(b.carga),
         nullInt(b.vagas_total)  ?? 15,
         nullInt(b.vagas_ocupadas) ?? 0,
-        b.status || 'aberta',
-        b.foto   || null,
+        b.status  || 'aberta',
+        b.foto    || null,
       ]
+    );
+    const newId = ins[0].id;
+    const ano   = new Date().getFullYear();
+    const codigo = `TUR-${ano}-${String(newId).padStart(3, '0')}`;
+
+    // 2. UPDATE codigo usando o id — sempre único
+    const { rows } = await db.query(
+      'UPDATE turmas SET codigo=$1 WHERE id=$2 RETURNING *',
+      [codigo, newId]
     );
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
