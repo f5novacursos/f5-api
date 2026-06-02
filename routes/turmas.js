@@ -67,15 +67,26 @@ router.get('/:id', async (req, res, next) => {
 // POST /api/turmas — criar turma
 router.post('/', async (req, res, next) => {
   try {
-    const { codigo, nome, turma, horario, dias, data_ini, data_fim, carga, vagas_total, vagas_ocupadas, status, foto } = req.body;
+    const b = req.body;
+    const nullDate = v => (v && String(v).trim() !== '' ? v : null);
+    const nullInt  = v => (v !== undefined && v !== null && String(v).trim() !== '' ? parseInt(v) : null);
     const { rows } = await db.query(
       'INSERT INTO turmas (codigo, nome, turma, horario, dias, data_ini, data_fim, carga, vagas_total, vagas_ocupadas, status, foto) ' +
       'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
-      [codigo, nome, turma, horario, dias, data_ini, data_fim, carga,
-       vagas_total != null ? vagas_total : 15,
-       vagas_ocupadas != null ? vagas_ocupadas : 0,
-       status != null ? status : 'aberta',
-       foto]
+      [
+        b.codigo || null,
+        b.nome   || null,
+        b.turma  || null,
+        b.horario|| null,
+        b.dias   || null,
+        nullDate(b.data_ini),
+        nullDate(b.data_fim),
+        nullInt(b.carga),
+        nullInt(b.vagas_total)  ?? 15,
+        nullInt(b.vagas_ocupadas) ?? 0,
+        b.status || 'aberta',
+        b.foto   || null,
+      ]
     );
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
@@ -84,12 +95,28 @@ router.post('/', async (req, res, next) => {
 // PUT /api/turmas/:id — atualizar turma
 router.put('/:id', async (req, res, next) => {
   try {
-    const { codigo, nome, turma, horario, dias, data_ini, data_fim, carga, vagas_total, vagas_ocupadas, status, foto } = req.body;
+    const b = req.body;
+    const nullDate = v => (v && String(v).trim() !== '' ? v : null);
+    const nullInt  = v => (v !== undefined && v !== null && String(v).trim() !== '' ? parseInt(v) : null);
     const { rows } = await db.query(
       'UPDATE turmas SET codigo=$1, nome=$2, turma=$3, horario=$4, dias=$5, data_ini=$6, ' +
       'data_fim=$7, carga=$8, vagas_total=$9, vagas_ocupadas=$10, status=$11, foto=$12 ' +
       'WHERE id=$13 RETURNING *',
-      [codigo, nome, turma, horario, dias, data_ini, data_fim, carga, vagas_total, vagas_ocupadas, status, foto, req.params.id]
+      [
+        b.codigo || null,
+        b.nome   || null,
+        b.turma  || null,
+        b.horario|| null,
+        b.dias   || null,
+        nullDate(b.data_ini),
+        nullDate(b.data_fim),
+        nullInt(b.carga),
+        nullInt(b.vagas_total),
+        nullInt(b.vagas_ocupadas),
+        b.status || 'aberta',
+        b.foto   || null,
+        req.params.id,
+      ]
     );
     if (!rows.length) return res.status(404).json({ error: 'Turma nao encontrada' });
     res.json(rows[0]);
