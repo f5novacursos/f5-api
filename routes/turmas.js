@@ -70,11 +70,21 @@ router.post('/', async (req, res, next) => {
     const b = req.body;
     const nullDate = v => (v && String(v).trim() !== '' ? v : null);
     const nullInt  = v => (v !== undefined && v !== null && String(v).trim() !== '' ? parseInt(v) : null);
+
+    // Gera código único no servidor — evita conflito com o que o frontend calculou
+    const ano = new Date().getFullYear();
+    const { rows: seqRows } = await db.query(
+      "SELECT COALESCE(MAX(CAST(NULLIF(REGEXP_REPLACE(codigo, '^TUR-\\\\d{4}-', ''), '') AS INTEGER)), 0) + 1 AS prox FROM turmas WHERE codigo LIKE $1",
+      [`TUR-${ano}-%`]
+    );
+    const seq = String(seqRows[0]?.prox || 1).padStart(3, '0');
+    const codigo = `TUR-${ano}-${seq}`;
+
     const { rows } = await db.query(
       'INSERT INTO turmas (codigo, nome, turma, horario, dias, data_ini, data_fim, carga, vagas_total, vagas_ocupadas, status, foto) ' +
       'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
       [
-        b.codigo || null,
+        codigo,
         b.nome   || null,
         b.turma  || null,
         b.horario|| null,
