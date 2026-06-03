@@ -23,6 +23,7 @@ app.use('/api/certificado', require('./routes/certificados'));
 app.use('/api/interessados', require('./routes/interessados'));
 app.use('/api/financeiro',  require('./routes/financeiro'));
 app.use('/api/contato',     require('./routes/contato'));
+app.use('/api/virturia',    require('./routes/virturia'));
 app.use('/api',             require('./routes/portfolio'));
 app.use('/api',             require('./routes/clientes-web'));
 
