@@ -88,5 +88,24 @@ router.get('/me', authMiddleware, (req, res) => {
   res.json({ ok: true, user: req.user });
 });
 
+// PUT /api/virturia/senha — troca senha do usuário autenticado
+router.put('/senha', authMiddleware, async (req, res, next) => {
+  try {
+    const { senhaAtual, senhaNova } = req.body;
+    if (!senhaAtual || !senhaNova) return res.status(400).json({ error: 'Campos obrigatórios' });
+    if (senhaNova.length < 6) return res.status(400).json({ error: 'Nova senha deve ter 6+ caracteres' });
+
+    const { rows } = await db.query('SELECT * FROM virturia_usuarios WHERE id = $1', [req.user.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    const ok = await bcrypt.compare(senhaAtual, rows[0].senha);
+    if (!ok) return res.status(401).json({ error: 'Senha atual incorreta' });
+
+    const hash = await bcrypt.hash(senhaNova, 10);
+    await db.query('UPDATE virturia_usuarios SET senha = $1 WHERE id = $2', [hash, req.user.id]);
+    res.json({ ok: true });
+  } catch(e) { next(e); }
+});
+
 module.exports = router;
 module.exports.authMiddleware = authMiddleware;
