@@ -91,7 +91,11 @@ router.post('/salvar', async (req, res, next) => {
              ft_a, ft_b, ht_a, ht_b, ft_str, ht_str,
              gols_total, is_btts, casa_ganha, visit_ganha, empate, ht_atipico, start_time)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
-          ON CONFLICT (event_id) DO NOTHING
+          ON CONFLICT (event_id) DO UPDATE SET
+            hora = EXCLUDED.hora,
+            slot = EXCLUDED.slot,
+            slot_min = EXCLUDED.slot_min,
+            start_time = EXCLUDED.start_time
         `, [
           String(r.id), r.liga, hora, slotIdx, slotMin,
           r.teamA, r.teamB,
