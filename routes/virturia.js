@@ -170,4 +170,48 @@ router.get('/padroes', async (req, res, next) => {
   }
 });
 
+// GET /api/virturia/resultados?liga=brasileirao&horas=6
+// Substitui o KV do Worker — frontend chama isso diretamente
+router.get('/resultados', async (req, res, next) => {
+  try {
+    const { liga, horas = 6 } = req.query;
+    const cutoff = new Date(Date.now() - Number(horas) * 3600000);
+
+    const params = [cutoff];
+    let ligaFilter = '';
+    if (liga) { ligaFilter = 'AND liga = $2'; params.push(liga); }
+
+    const r = await db.query(`
+      SELECT
+        event_id  AS id,
+        liga,
+        team_a    AS "teamA",
+        team_b    AS "teamB",
+        ft_a::text AS "scoreA",
+        ft_b::text AS "scoreB",
+        ht_a::text AS "htA",
+        ht_b::text AS "htB",
+        start_time  AS "startTime",
+        coletado_em AS "endedAt",
+        true        AS "isEnded"
+      FROM virturia_resultados
+      WHERE coletado_em > $1
+      ${ligaFilter}
+      ORDER BY coletado_em DESC
+      LIMIT 2000
+    `, params);
+
+    const totalR = await db.query('SELECT COUNT(*) as t FROM virturia_resultados WHERE coletado_em > $1', [cutoff]);
+
+    res.json({
+      ok: true,
+      total: r.rows.length,
+      hist: Number(totalR.rows[0].t),
+      results: r.rows
+    });
+  } catch(e) {
+    next(e);
+  }
+});
+
 module.exports = router;
