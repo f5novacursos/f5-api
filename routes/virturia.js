@@ -220,4 +220,15 @@ router.get('/resultados', async (req, res, next) => {
   }
 });
 
+// Endpoint interno: dispara o Worker manualmente (usado pelo cron do VPS)
+router.get('/trigger', async (req, res) => {
+  try {
+    const r = await fetch('https://betano-proxy.f5novacursos.workers.dev/run');
+    const data = await r.json();
+    res.json({ ok: true, worker: data });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;
