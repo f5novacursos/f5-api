@@ -220,7 +220,106 @@ router.get('/resultados', async (req, res, next) => {
   }
 });
 
-// Endpoint interno: dispara o Worker manualmente (usado pelo cron do VPS)
+// Coleta direto da Betano pelo VPS (IP fixo, sem Cloudflare)
+const BETANO = 'https://www.betano.bet.br';
+const LIGA_MAP = {
+  '204676': 'brasileirao',
+  '199959': 'classicos',
+  '203063': 'copa_america',
+  '203064': 'euro',
+  '199961': 'italiano',
+  '199960': 'copa_estrelas'
+};
+const HDR = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept': 'application/json',
+  'Referer': 'https://www.betano.bet.br/virtuals/futebol/'
+};
+
+router.get('/coletar', async (req, res) => {
+  try {
+    const results = [];
+    for (const [lid, liga] of Object.entries(LIGA_MAP)) {
+      try {
+        const r = await fetch(`${BETANO}/api/virtuals/resultsdata?leagueId=${lid}`, { headers: HDR });
+        if (!r.ok) continue;
+        const d = await r.json();
+        for (const group of (d.data && d.data.results ? d.data.results : [])) {
+          const groupStartTime = group.startTime || null;
+          for (const ev of (group.events || [])) {
+            const parts = ev.displayNameParts || [];
+            const stats = ev.statistics || [];
+            let ftA = null, ftB = null, htA = null, htB = null;
+            for (const s of stats) {
+              const v = s.value && s.value.score != null ? Number(s.value.score) : null;
+              if (v === null) continue;
+              if (s.statisticsType === 'FullTimeHomeTeam') ftA = v;
+              if (s.statisticsType === 'FullTimeAwayTeam') ftB = v;
+              if (s.statisticsType === 'HalfTimeHomeTeam') htA = v;
+              if (s.statisticsType === 'HalfTimeAwayTeam') htB = v;
+            }
+            if (ftA === null) continue;
+            results.push({
+              id: String(ev.id), liga,
+              teamA: parts[0] ? parts[0].name : null,
+              teamB: parts[1] ? parts[1].name : null,
+              scoreA: String(ftA), scoreB: String(ftB),
+              htA: htA !== null ? String(htA) : null,
+              htB: htB !== null ? String(htB) : null,
+              startTime: groupStartTime,
+              isEnded: true, endedAt: groupStartTime || Date.now()
+            });
+          }
+        }
+      } catch(e) {}
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    // Salva no banco (reutiliza lógica do /salvar)
+    const SLOTS = {
+      brasileirao: [0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,48,51,54,57],
+      classicos:   [1,4,7,10,13,16,19,22,25,28,31,34,37,40,43,46,49,52,55,58],
+      copa_america:[2,5,8,11,14,17,20,23,26,29,32,35,38,41,44,47,50,53,56,59],
+      euro:        [1,4,7,10,13,16,19,22,25,28,31,34,37,40,43,46,49,52,55,58],
+      italiano:    [2,5,8,11,14,17,20,23,26,29,32,35,38,41,44,47,50,53,56,59],
+      copa_estrelas:[0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,48,51,54,57]
+    };
+    let salvos = 0;
+    for (const r of results) {
+      if (!r.startTime) continue;
+      const ftA = Number(r.scoreA)||0, ftB = Number(r.scoreB)||0;
+      const htA = r.htA!=null?Number(r.htA):null, htB = r.htB!=null?Number(r.htB):null;
+      const d = new Date(r.startTime);
+      // Converte UTC→BRT para calcular hora/slot corretos
+      const dBRT = new Date(d.getTime() - 3*3600000);
+      const hora = dBRT.getUTCHours(), minuto = dBRT.getUTCMinutes();
+      const ligaSlots = SLOTS[r.liga]||SLOTS.brasileirao;
+      let slotIdx=0, minDiff=99;
+      for (let i=0;i<ligaSlots.length;i++) {
+        const diff=Math.abs(ligaSlots[i]-minuto);
+        if(diff<minDiff){minDiff=diff;slotIdx=i;}
+      }
+      const slotMin = ligaSlots[slotIdx];
+      try {
+        await db.query(`
+          INSERT INTO virturia_resultados
+            (event_id,liga,hora,slot,slot_min,team_a,team_b,ft_a,ft_b,ht_a,ht_b,ft_str,ht_str,gols_total,is_btts,casa_ganha,visit_ganha,empate,ht_atipico,start_time)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+          ON CONFLICT (event_id) DO UPDATE SET
+            hora=EXCLUDED.hora, slot=EXCLUDED.slot, slot_min=EXCLUDED.slot_min, start_time=EXCLUDED.start_time
+        `, [String(r.id),r.liga,hora,slotIdx,slotMin,r.teamA,r.teamB,ftA,ftB,htA,htB,
+            `${ftA}-${ftB}`,htA!=null?`${htA}-${htB}`:null,ftA+ftB,ftA>0&&ftB>0,ftA>ftB,ftB>ftA,ftA===ftB,
+            htA!=null?(htA+htB>=3):false, r.startTime]);
+        salvos++;
+      } catch(e) {}
+    }
+    res.json({ ok: true, salvos, total: results.length });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Trigger legado (mantido para compatibilidade)
 router.get('/trigger', async (req, res) => {
   try {
     const r = await fetch('https://betano-proxy.f5novacursos.workers.dev/run');
