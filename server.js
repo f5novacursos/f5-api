@@ -54,12 +54,18 @@ app.listen(PORT, () => {
 });
 
 // ── Cron VirtuIA — chama Worker a cada 60s ─────────────────
-const WORKER_URL = 'https://betano-proxy.f5novacursos.workers.dev/run';
+const https = require('https');
 function triggerWorker() {
-  fetch(WORKER_URL)
-    .then(r => r.json())
-    .then(d => { if (d.saved > 0) console.log(`[virturia] coletou ${d.saved} jogos`); })
-    .catch(() => {});
+  https.get('https://betano-proxy.f5novacursos.workers.dev/run', (res) => {
+    let data = '';
+    res.on('data', c => data += c);
+    res.on('end', () => {
+      try {
+        const d = JSON.parse(data);
+        console.log(`[virturia] ciclo: saved=${d.saved}`);
+      } catch(e) {}
+    });
+  }).on('error', (e) => console.error('[virturia] erro trigger:', e.message));
 }
 setInterval(triggerWorker, 60000);
-setTimeout(triggerWorker, 5000); // dispara 5s após subir
+setTimeout(triggerWorker, 3000);
