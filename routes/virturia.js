@@ -179,9 +179,11 @@ router.get('/padroes', async (req, res, next) => {
 router.get('/resultados', async (req, res, next) => {
   try {
     const { liga, horas = 6 } = req.query;
-    const cutoff = new Date(Date.now() - Number(horas) * 3600000);
+    // Filtra por start_time (ms) — event_ids se repetem entre dias,
+    // coletado_em ficaria desatualizado via ON CONFLICT DO UPDATE
+    const cutoffMs = Date.now() - Number(horas) * 3600000;
 
-    const params = [cutoff];
+    const params = [cutoffMs];
     let ligaFilter = '';
     if (liga) { ligaFilter = 'AND liga = $2'; params.push(liga); }
 
@@ -196,16 +198,16 @@ router.get('/resultados', async (req, res, next) => {
         ht_a::text AS "htA",
         ht_b::text AS "htB",
         start_time  AS "startTime",
-        EXTRACT(EPOCH FROM coletado_em)::bigint * 1000 AS "endedAt",
+        start_time  AS "endedAt",
         true        AS "isEnded"
       FROM virturia_resultados
-      WHERE coletado_em > $1
+      WHERE start_time > $1
       ${ligaFilter}
-      ORDER BY coletado_em DESC
+      ORDER BY start_time DESC
       LIMIT 2000
     `, params);
 
-    const totalR = await db.query('SELECT COUNT(*) as t FROM virturia_resultados WHERE coletado_em > $1', [cutoff]);
+    const totalR = await db.query('SELECT COUNT(*) as t FROM virturia_resultados WHERE start_time > $1', [cutoffMs]);
 
     res.json({
       ok: true,
