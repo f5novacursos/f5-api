@@ -71,15 +71,48 @@ router.post('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PUT /api/alunos/:id
+// PUT /api/alunos/:id — COALESCE preserva campos nao enviados (cert_hash, curso, etc.)
 router.put('/:id', async (req, res, next) => {
   try {
     const { nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, cert_hash, status_pagamento } = req.body;
+
+    // Aceita valor como string "R$ 550,00" ou numero
+    const valorNum = valor != null
+      ? parseFloat(String(valor).replace(/[^\d,.]/g,'').replace(',','.')) || null
+      : null;
+
     const { rows } = await db.query(
-      'UPDATE alunos SET nome=$1, cpf=$2, data_nasc=$3, email=$4, whatsapp=$5, endereco=$6, ' +
-      'curso=$7, turma_id=$8, status=$9, pagamento=$10, valor=$11, cert_hash=$12, status_pagamento=$13 ' +
-      'WHERE id=$14 RETURNING *',
-      [nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, cert_hash ?? '', status_pagamento ?? 'pendente', req.params.id]
+      `UPDATE alunos SET
+        nome             = COALESCE($1,  nome),
+        cpf              = COALESCE($2,  cpf),
+        data_nasc        = COALESCE($3,  data_nasc),
+        email            = COALESCE($4,  email),
+        whatsapp         = COALESCE($5,  whatsapp),
+        endereco         = COALESCE($6,  endereco),
+        curso            = COALESCE($7,  curso),
+        turma_id         = COALESCE($8,  turma_id),
+        status           = COALESCE($9,  status),
+        pagamento        = COALESCE($10, pagamento),
+        valor            = COALESCE($11, valor),
+        cert_hash        = COALESCE(NULLIF($12,''), cert_hash),
+        status_pagamento = COALESCE($13, status_pagamento)
+      WHERE id = $14 RETURNING *`,
+      [
+        nome      ?? null,
+        cpf       ?? null,
+        data_nasc ?? null,
+        email     ?? null,
+        whatsapp  ?? null,
+        endereco  ?? null,
+        curso     ?? null,
+        turma_id  ?? null,
+        status    ?? null,
+        pagamento || null,
+        valorNum,
+        cert_hash ?? null,
+        status_pagamento ?? null,
+        req.params.id,
+      ]
     );
     if (!rows.length) return res.status(404).json({ error: 'Aluno nao encontrado' });
     res.json(rows[0]);
