@@ -192,7 +192,7 @@ router.get('/resultados', async (req, res, next) => {
         ht_a::text AS "htA",
         ht_b::text AS "htB",
         start_time  AS "startTime",
-        coletado_em AS "endedAt",
+        EXTRACT(EPOCH FROM coletado_em)::bigint * 1000 AS "endedAt",
         true        AS "isEnded"
       FROM virturia_resultados
       WHERE coletado_em > $1
