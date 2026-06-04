@@ -22,22 +22,88 @@ db.query(`ALTER TABLE financeiro ADD COLUMN IF NOT EXISTS cliente VARCHAR(200) N
   .catch(() => {});
 db.query(`ALTER TABLE financeiro ADD COLUMN IF NOT EXISTS recibo_url VARCHAR(600) DEFAULT ''`)
   .catch(() => {});
+/* Despesas recorrentes — templates mensais */
+db.query(`ALTER TABLE financeiro ADD COLUMN IF NOT EXISTS recorrente BOOLEAN DEFAULT false`)
+  .catch(() => {});
+/* Tabela separada para templates recorrentes */
+db.query(`
+  CREATE TABLE IF NOT EXISTS financeiro_recorrente (
+    id          SERIAL PRIMARY KEY,
+    categoria   VARCHAR(100) NOT NULL DEFAULT '',
+    descricao   VARCHAR(300) NOT NULL DEFAULT '',
+    valor       NUMERIC(10,2) NOT NULL DEFAULT 0,
+    dia_venc    INTEGER DEFAULT 10,
+    ativo       BOOLEAN DEFAULT true,
+    criado_em   TIMESTAMP DEFAULT NOW()
+  )
+`).catch(() => {});
 
 /* ── GET /api/financeiro ─────────────────────────────────── */
 router.get('/', async (req, res) => {
   try {
     const { tipo, mes, ano } = req.query;
     const params = [];
-    const where  = [];
+    const where  = ['(recorrente IS NULL OR recorrente = false)'];
     if (tipo) { params.push(tipo); where.push(`tipo = $${params.length}`); }
     if (mes)  {
       params.push(mes + '-01');
       where.push(`DATE_TRUNC('month', data) = DATE_TRUNC('month', $${params.length}::date)`);
     }
     if (ano)  { params.push(ano); where.push(`EXTRACT(YEAR FROM data) = $${params.length}`); }
-    const sql = `SELECT * FROM financeiro${where.length?' WHERE '+where.join(' AND '):''} ORDER BY data DESC, id DESC`;
+    const sql = `SELECT * FROM financeiro WHERE ${where.join(' AND ')} ORDER BY data DESC, id DESC`;
     const { rows } = await db.query(sql, params);
     res.json(rows);
+  } catch (err) { res.status(500).json({ erro: err.message }); }
+});
+
+/* ── GET /api/financeiro/recorrentes — lista templates ─────── */
+router.get('/recorrentes', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      'SELECT * FROM financeiro_recorrente WHERE ativo=true ORDER BY id ASC'
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ erro: err.message }); }
+});
+
+/* ── POST /api/financeiro/recorrentes — cria template ──────── */
+router.post('/recorrentes', async (req, res) => {
+  try {
+    const { categoria='', descricao='', valor, dia_venc=10 } = req.body;
+    if (!valor) return res.status(400).json({ erro: 'valor obrigatório' });
+    const { rows } = await db.query(
+      `INSERT INTO financeiro_recorrente (categoria, descricao, valor, dia_venc)
+       VALUES ($1,$2,$3,$4) RETURNING *`,
+      [categoria, descricao, valor, dia_venc]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) { res.status(500).json({ erro: err.message }); }
+});
+
+/* ── DELETE /api/financeiro/recorrentes/:id — remove template ─ */
+router.delete('/recorrentes/:id', async (req, res) => {
+  try {
+    await db.query('UPDATE financeiro_recorrente SET ativo=false WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ erro: err.message }); }
+});
+
+/* ── POST /api/financeiro/recorrentes/:id/pagar — paga um mês ─ */
+router.post('/recorrentes/:id/pagar', async (req, res) => {
+  try {
+    const { mes } = req.body; // 'YYYY-MM'
+    const { rows: rec } = await db.query(
+      'SELECT * FROM financeiro_recorrente WHERE id=$1', [req.params.id]
+    );
+    if (!rec.length) return res.status(404).json({ erro: 'Recorrente não encontrado' });
+    const r = rec[0];
+    const data = mes ? `${mes}-${String(r.dia_venc).padStart(2,'0')}` : new Date().toISOString().split('T')[0];
+    const { rows } = await db.query(
+      `INSERT INTO financeiro (tipo, categoria, descricao, valor, data, status, obs)
+       VALUES ('despesa',$1,$2,$3,$4,'pago','Pago via recorrente') RETURNING *`,
+      [r.categoria, r.descricao, r.valor, data]
+    );
+    res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ erro: err.message }); }
 });
 
@@ -52,6 +118,7 @@ router.get('/resumo', async (req, res) => {
       SELECT tipo, categoria, SUM(valor) as total, COUNT(*) as qt
       FROM financeiro
       WHERE EXTRACT(YEAR FROM data)=$1 AND EXTRACT(MONTH FROM data)=$2
+        AND (recorrente IS NULL OR recorrente = false)
       GROUP BY tipo, categoria
     `, [ano, m]);
 
@@ -64,7 +131,7 @@ router.get('/resumo', async (req, res) => {
 
     const { rows: mrr } = await db.query(`
       SELECT COALESCE(SUM(mensalidade),0) as mrr, COUNT(*) as qt
-      FROM clientes_web WHERE status='ativo'
+      FROM clientes_web WHERE status='ativo' AND (periodicidade IS NULL OR periodicidade != 'avulso')
     `);
 
     const { rows: inadimp } = await db.query(`
@@ -80,6 +147,7 @@ router.get('/resumo', async (req, res) => {
              SUM(CASE WHEN tipo='despesa' THEN valor ELSE 0 END) as dep
       FROM financeiro
       WHERE data >= (DATE_TRUNC('month',CURRENT_DATE) - INTERVAL '5 months')
+        AND (recorrente IS NULL OR recorrente = false)
       GROUP BY TO_CHAR(data,'Mon'), EXTRACT(YEAR FROM data), EXTRACT(MONTH FROM data)
       ORDER BY ano, mes_num
     `);
@@ -100,6 +168,7 @@ router.get('/resumo', async (req, res) => {
       SELECT id, tipo, categoria, cliente, descricao, valor, data, status, obs
       FROM financeiro
       WHERE EXTRACT(YEAR FROM data)=$1 AND EXTRACT(MONTH FROM data)=$2
+        AND (recorrente IS NULL OR recorrente = false)
       ORDER BY data DESC
     `, [ano, m]);
 
@@ -111,11 +180,11 @@ router.get('/resumo', async (req, res) => {
       ORDER BY pagamento DESC
     `, [ano, m]);
 
-    // Totais acumulados (todos os tempos)
     const { rows: totaisAno } = await db.query(`
       SELECT tipo, COALESCE(SUM(valor),0) as total
       FROM financeiro
       WHERE EXTRACT(YEAR FROM data)=$1
+        AND (recorrente IS NULL OR recorrente = false)
       GROUP BY tipo
     `, [ano]);
 
@@ -124,6 +193,22 @@ router.get('/resumo', async (req, res) => {
       FROM alunos
       WHERE valor IS NOT NULL AND valor>0 AND EXTRACT(YEAR FROM pagamento)=$1
     `, [ano]);
+
+    /* Recorrentes: lista todos + marca quais já foram pagos este mês */
+    const { rows: recTemplates } = await db.query(
+      'SELECT * FROM financeiro_recorrente WHERE ativo=true ORDER BY id ASC'
+    );
+    const { rows: recPagos } = await db.query(`
+      SELECT descricao FROM financeiro
+      WHERE tipo='despesa' AND status='pago'
+        AND EXTRACT(YEAR FROM data)=$1 AND EXTRACT(MONTH FROM data)=$2
+        AND obs='Pago via recorrente'
+    `, [ano, m]);
+    const descPagos = new Set(recPagos.map(r => r.descricao));
+    const recorrentes = recTemplates.map(r => ({
+      ...r,
+      pago_mes: descPagos.has(r.descricao),
+    }));
 
     const receitaAvulsa    = lancMes.filter(l=>l.tipo==='receita').reduce((s,l)=>s+parseFloat(l.total),0);
     const despesaTotal     = lancMes.filter(l=>l.tipo==='despesa').reduce((s,l)=>s+parseFloat(l.total),0);
@@ -150,7 +235,6 @@ router.get('/resumo', async (req, res) => {
       qt_clientes_ativos: parseInt(mrr[0]?.qt||0),
       inadimplencia:      parseFloat(inadimp[0]?.total||0),
       qt_inadimplentes:   parseInt(inadimp[0]?.qt||0),
-      // Acumulado do ano
       ano_receita_matriculas: anoMatriculas,
       ano_receita_avulsa:     anoRecAvulsa,
       ano_despesa:            anoDesp,
@@ -158,6 +242,7 @@ router.get('/resumo', async (req, res) => {
       hist_matriculas:    histMatriculas,
       lancamentos:        lancDetalhes,
       matriculas_mes:     alunosMes,
+      recorrentes,
     });
   } catch (err) { res.status(500).json({ erro: err.message }); }
 });
