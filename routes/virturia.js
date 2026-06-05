@@ -61,9 +61,6 @@ router.post('/salvar', async (req, res, next) => {
       const hora = dBRT.getUTCHours();
       const minuto = dBRT.getUTCMinutes();
       const dataBRT = dBRT.toISOString().slice(0, 10); // "2026-06-05"
-      // Chave única por liga+dia+hora+slot — Betano reutiliza event_ids a cada hora
-      // então não podemos confiar no ID deles como identificador único intra-dia
-      const eventIdComData = `${r.liga}_${dataBRT}_${hora}_${slotMin}`;
 
       // Mapa de slots por liga (minutos de cada slot)
       const SLOTS = {
@@ -84,6 +81,8 @@ router.post('/salvar', async (req, res, next) => {
         if (diff < minDiff) { minDiff = diff; slotIdx = i; }
       }
       const slotMin = ligaSlots[slotIdx];
+      // Chave única por liga+dia+hora+slot — Betano reutiliza event_ids a cada hora
+      const eventIdComData = `${r.liga}_${dataBRT}_${hora}_${slotMin}`;
 
       try {
         await db.query(`
