@@ -6,7 +6,7 @@ async function initTable() {
   await db.query(`
     CREATE TABLE IF NOT EXISTS virturia_resultados (
       id            SERIAL PRIMARY KEY,
-      event_id      VARCHAR(20) NOT NULL,
+      event_id      VARCHAR(40) NOT NULL UNIQUE,
       liga          VARCHAR(30) NOT NULL,
       hora          INTEGER NOT NULL,
       slot          INTEGER NOT NULL,
@@ -29,7 +29,6 @@ async function initTable() {
       coletado_em   TIMESTAMP DEFAULT NOW()
     )
   `);
-  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vr_event_time ON virturia_resultados(event_id, start_time)`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_vr_liga ON virturia_resultados(liga)`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_vr_hora_slot ON virturia_resultados(hora, slot_min)`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_vr_coletado ON virturia_resultados(coletado_em)`);
@@ -62,8 +61,11 @@ router.post('/salvar', async (req, res, next) => {
       // Calcula hora e slot a partir do startTime
       if (!r.startTime) continue;
       const d = new Date(r.startTime);
-      const hora = d.getHours();
-      const minuto = d.getMinutes();
+      const dBRT = new Date(d.getTime() - 3 * 3600000);
+      const hora = dBRT.getUTCHours();
+      const minuto = dBRT.getUTCMinutes();
+      const dataBRT = dBRT.toISOString().slice(0, 10); // "2026-06-05"
+      const eventIdComData = `${r.id}_${dataBRT}`;
 
       // Mapa de slots por liga (minutos de cada slot)
       const SLOTS = {
@@ -92,7 +94,7 @@ router.post('/salvar', async (req, res, next) => {
              ft_a, ft_b, ht_a, ht_b, ft_str, ht_str,
              gols_total, is_btts, casa_ganha, visit_ganha, empate, ht_atipico, start_time)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
-          ON CONFLICT (event_id, start_time) DO UPDATE SET
+          ON CONFLICT (event_id) DO UPDATE SET
             hora = EXCLUDED.hora,
             slot = EXCLUDED.slot,
             slot_min = EXCLUDED.slot_min,
@@ -108,7 +110,7 @@ router.post('/salvar', async (req, res, next) => {
             visit_ganha = EXCLUDED.visit_ganha,
             empate = EXCLUDED.empate
         `, [
-          String(r.id), r.liga, hora, slotIdx, slotMin,
+          eventIdComData, r.liga, hora, slotIdx, slotMin,
           r.teamA, r.teamB,
           ftA, ftB, htA, htB,
           `${ftA}-${ftB}`,
