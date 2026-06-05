@@ -30,6 +30,11 @@ app.use('/api/virturia', (req, res, next) => {
 });
 app.use('/api/virturia',    require('./routes/virturia'));
 app.use('/api/virturia',    require('./routes/virturia-auth'));
+app.use('/api/virturia-b365', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  next();
+});
+app.use('/api/virturia-b365', require('./routes/virturia-b365'));
 app.use('/api',             require('./routes/portfolio'));
 app.use('/api',             require('./routes/clientes-web'));
 
