@@ -85,27 +85,13 @@ router.post('/salvar', async (req, res, next) => {
       const eventIdComData = `${r.liga}_${dataBRT}_${hora}_${slotMin}`;
 
       try {
-        await db.query(`
+        const result = await db.query(`
           INSERT INTO virturia_resultados
             (event_id, liga, hora, slot, slot_min, team_a, team_b,
              ft_a, ft_b, ht_a, ht_b, ft_str, ht_str,
              gols_total, is_btts, casa_ganha, visit_ganha, empate, ht_atipico, start_time)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
-          ON CONFLICT (event_id) DO UPDATE SET
-            hora = EXCLUDED.hora,
-            slot = EXCLUDED.slot,
-            slot_min = EXCLUDED.slot_min,
-            ft_a = EXCLUDED.ft_a,
-            ft_b = EXCLUDED.ft_b,
-            ht_a = EXCLUDED.ht_a,
-            ht_b = EXCLUDED.ht_b,
-            ft_str = EXCLUDED.ft_str,
-            ht_str = EXCLUDED.ht_str,
-            gols_total = EXCLUDED.gols_total,
-            is_btts = EXCLUDED.is_btts,
-            casa_ganha = EXCLUDED.casa_ganha,
-            visit_ganha = EXCLUDED.visit_ganha,
-            empate = EXCLUDED.empate
+          ON CONFLICT (event_id) DO NOTHING
         `, [
           eventIdComData, r.liga, hora, slotIdx, slotMin,
           r.teamA, r.teamB,
@@ -120,7 +106,8 @@ router.post('/salvar', async (req, res, next) => {
           htA != null ? (htA + htB >= 3) : false,
           r.startTime
         ]);
-        salvos++;
+        // rowCount=1 = INSERT real (novo slot), rowCount=0 = conflito (já existia)
+        if (result.rowCount === 1) salvos++;
       } catch(e) {
         // Conflito de event_id = já existe, ignora
       }
