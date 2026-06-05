@@ -23,6 +23,11 @@ app.use('/api/certificado', require('./routes/certificados'));
 app.use('/api/interessados', require('./routes/interessados'));
 app.use('/api/financeiro',  require('./routes/financeiro'));
 app.use('/api/contato',     require('./routes/contato'));
+// Virturia: nunca cachear — dados mudam a cada minuto
+app.use('/api/virturia', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  next();
+});
 app.use('/api/virturia',    require('./routes/virturia'));
 app.use('/api/virturia',    require('./routes/virturia-auth'));
 app.use('/api',             require('./routes/portfolio'));
