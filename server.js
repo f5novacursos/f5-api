@@ -53,19 +53,5 @@ app.listen(PORT, () => {
   console.log(`✅  F5 API rodando na porta ${PORT}`);
 });
 
-// ── Cron VirtuIA — chama Worker a cada 60s ─────────────────
-const https = require('https');
-function triggerWorker() {
-  https.get('https://betano-proxy.f5novacursos.workers.dev/run', (res) => {
-    let data = '';
-    res.on('data', c => data += c);
-    res.on('end', () => {
-      try {
-        const d = JSON.parse(data);
-        console.log(`[virturia] ciclo: saved=${d.saved}`);
-      } catch(e) {}
-    });
-  }).on('error', (e) => console.error('[virturia] erro trigger:', e.message));
-}
-setInterval(triggerWorker, 60000);
-setTimeout(triggerWorker, 3000);
+// ── Cron VirtuIA removido — coleta feita pelo cron-job.org a cada 3min ────
+// O cron interno causava excesso de requests (18/min) que bloqueava a Betano
