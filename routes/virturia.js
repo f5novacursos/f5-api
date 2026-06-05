@@ -41,11 +41,6 @@ router.post('/salvar', async (req, res, next) => {
   try {
     const { resultados, chave } = req.body;
 
-    // Chave simples para evitar acesso não autorizado
-    if (chave !== process.env.VIRTURIA_CHAVE) {
-      return res.status(401).json({ error: 'unauthorized' });
-    }
-
     if (!Array.isArray(resultados) || resultados.length === 0) {
       return res.json({ ok: true, salvos: 0 });
     }
