@@ -18,6 +18,8 @@ async function migrate() {
   `);
 }
 migrate();
+/* Adiciona tem_notebook se não existir */
+pool.query("ALTER TABLE interessados ADD COLUMN IF NOT EXISTS tem_notebook BOOLEAN DEFAULT false").catch(()=>{});
 
 router.get('/', async (req, res) => {
   try {
@@ -41,11 +43,11 @@ router.get('/match', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { nome, whatsapp, curso, turno, motivo, obs, reserva_id } = req.body;
+    const { nome, whatsapp, curso, turno, motivo, obs, reserva_id, tem_notebook } = req.body;
     if (!nome) return res.status(400).json({ erro: 'nome obrigatorio' });
     const r = await pool.query(
-      'INSERT INTO interessados (nome, whatsapp, curso, turno, motivo, obs, reserva_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-      [nome, whatsapp||null, curso||null, turno||null, motivo||null, obs||null, reserva_id||null]
+      'INSERT INTO interessados (nome, whatsapp, curso, turno, motivo, obs, reserva_id, tem_notebook) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+      [nome, whatsapp||null, curso||null, turno||null, motivo||null, obs||null, reserva_id||null, Boolean(tem_notebook||false)]
     );
     if (reserva_id) await pool.query('DELETE FROM reservas WHERE id = $1', [reserva_id]);
     res.json(r.rows[0]);
