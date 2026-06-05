@@ -6,7 +6,7 @@ async function initTable() {
   await db.query(`
     CREATE TABLE IF NOT EXISTS virturia_resultados (
       id            SERIAL PRIMARY KEY,
-      event_id      VARCHAR(20) NOT NULL UNIQUE,
+      event_id      VARCHAR(20) NOT NULL,
       liga          VARCHAR(30) NOT NULL,
       hora          INTEGER NOT NULL,
       slot          INTEGER NOT NULL,
@@ -29,6 +29,7 @@ async function initTable() {
       coletado_em   TIMESTAMP DEFAULT NOW()
     )
   `);
+  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vr_event_time ON virturia_resultados(event_id, start_time)`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_vr_liga ON virturia_resultados(liga)`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_vr_hora_slot ON virturia_resultados(hora, slot_min)`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_vr_coletado ON virturia_resultados(coletado_em)`);
@@ -91,11 +92,10 @@ router.post('/salvar', async (req, res, next) => {
              ft_a, ft_b, ht_a, ht_b, ft_str, ht_str,
              gols_total, is_btts, casa_ganha, visit_ganha, empate, ht_atipico, start_time)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
-          ON CONFLICT (event_id) DO UPDATE SET
+          ON CONFLICT (event_id, start_time) DO UPDATE SET
             hora = EXCLUDED.hora,
             slot = EXCLUDED.slot,
             slot_min = EXCLUDED.slot_min,
-            start_time = EXCLUDED.start_time,
             ft_a = EXCLUDED.ft_a,
             ft_b = EXCLUDED.ft_b,
             ht_a = EXCLUDED.ht_a,
