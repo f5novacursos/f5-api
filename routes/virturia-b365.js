@@ -14,7 +14,7 @@ async function initTable() {
   await db.query(`
     CREATE TABLE IF NOT EXISTS virturia_resultados_b365 (
       id            SERIAL PRIMARY KEY,
-      event_id      VARCHAR(20) NOT NULL UNIQUE,
+      event_id      VARCHAR(60) NOT NULL UNIQUE,
       liga          VARCHAR(30) NOT NULL,
       hora          INTEGER NOT NULL,
       slot          INTEGER NOT NULL,
@@ -45,8 +45,7 @@ initTable().catch(e => console.error('[virturia-b365] init error:', e.message));
 // POST /api/virturia-b365/salvar
 router.post('/salvar', async (req, res, next) => {
   try {
-    const { resultados, chave } = req.body;
-    if (chave !== process.env.VIRTURIA_CHAVE) return res.status(401).json({ error: 'unauthorized' });
+    const { resultados } = req.body;
     if (!Array.isArray(resultados) || resultados.length === 0) return res.json({ ok: true, salvos: 0 });
 
     const SLOTS = {
@@ -72,14 +71,20 @@ router.post('/salvar', async (req, res, next) => {
         if(diff<minDiff){minDiff=diff;slotIdx=i;}
       }
       const slotMin = ligaSlots[slotIdx];
+      const dataBRT = dBRT.toISOString().slice(0, 10);
+      // event_id único por liga+dia+hora+slot (Bet365 também reutiliza IDs a cada ciclo)
+      const eventId = `${r.liga}_${dataBRT}_${hora}_${slotMin}`;
       try {
         await db.query(`
           INSERT INTO virturia_resultados_b365
             (event_id,liga,hora,slot,slot_min,team_a,team_b,ft_a,ft_b,ht_a,ht_b,ft_str,ht_str,gols_total,is_btts,casa_ganha,visit_ganha,empate,ht_atipico,start_time)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
           ON CONFLICT (event_id) DO UPDATE SET
-            hora=EXCLUDED.hora, slot=EXCLUDED.slot, slot_min=EXCLUDED.slot_min, start_time=EXCLUDED.start_time
-        `, [String(r.id),r.liga,hora,slotIdx,slotMin,r.teamA,r.teamB,ftA,ftB,htA,htB,
+            ft_a=EXCLUDED.ft_a, ft_b=EXCLUDED.ft_b, ht_a=EXCLUDED.ht_a, ht_b=EXCLUDED.ht_b,
+            ft_str=EXCLUDED.ft_str, ht_str=EXCLUDED.ht_str, gols_total=EXCLUDED.gols_total,
+            is_btts=EXCLUDED.is_btts, casa_ganha=EXCLUDED.casa_ganha, visit_ganha=EXCLUDED.visit_ganha,
+            empate=EXCLUDED.empate, start_time=EXCLUDED.start_time
+        `, [eventId,r.liga,hora,slotIdx,slotMin,r.teamA,r.teamB,ftA,ftB,htA,htB,
             `${ftA}-${ftB}`,htA!=null?`${htA}-${htB}`:null,ftA+ftB,ftA>0&&ftB>0,ftA>ftB,ftB>ftA,ftA===ftB,
             htA!=null?(htA+htB>=3):false, r.startTime]);
         salvos++;

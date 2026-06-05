@@ -1,6 +1,10 @@
 const router = require('express').Router();
 const db = require('../db');
 
+/* Auto-migration — adiciona coluna tem_notebook se não existir */
+db.query("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS tem_notebook BOOLEAN DEFAULT false")
+  .catch(() => {});
+
 // GET /api/alunos
 router.get('/', async (req, res, next) => {
   try {
@@ -58,11 +62,11 @@ router.get('/:id', async (req, res, next) => {
 // POST /api/alunos
 router.post('/', async (req, res, next) => {
   try {
-    const { nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, status_pagamento } = req.body;
+    const { nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, status_pagamento, tem_notebook } = req.body;
     const { rows } = await db.query(
-      'INSERT INTO alunos (nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, status_pagamento) ' +
-      'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
-      [nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status ?? 'ativo', pagamento, valor, status_pagamento ?? 'pendente']
+      'INSERT INTO alunos (nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, status_pagamento, tem_notebook) ' +
+      'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+      [nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status ?? 'ativo', pagamento, valor, status_pagamento ?? 'pendente', Boolean(tem_notebook||false)]
     );
     if (turma_id) {
       await db.query('UPDATE turmas SET vagas_ocupadas = vagas_ocupadas + 1 WHERE id = $1', [turma_id]);
@@ -74,7 +78,7 @@ router.post('/', async (req, res, next) => {
 // PUT /api/alunos/:id — COALESCE preserva campos nao enviados (cert_hash, curso, etc.)
 router.put('/:id', async (req, res, next) => {
   try {
-    const { nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, cert_hash, status_pagamento } = req.body;
+    const { nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, cert_hash, status_pagamento, tem_notebook } = req.body;
 
     // Aceita valor como string "R$ 550,00" ou numero
     const valorNum = valor != null
@@ -95,8 +99,9 @@ router.put('/:id', async (req, res, next) => {
         pagamento        = COALESCE($10, pagamento),
         valor            = COALESCE($11, valor),
         cert_hash        = COALESCE(NULLIF($12,''), cert_hash),
-        status_pagamento = COALESCE($13, status_pagamento)
-      WHERE id = $14 RETURNING *`,
+        status_pagamento = COALESCE($13, status_pagamento),
+        tem_notebook     = COALESCE($14, tem_notebook)
+      WHERE id = $15 RETURNING *`,
       [
         nome      ?? null,
         cpf       ?? null,
@@ -111,6 +116,7 @@ router.put('/:id', async (req, res, next) => {
         valorNum,
         cert_hash ?? null,
         status_pagamento ?? null,
+        tem_notebook != null ? Boolean(tem_notebook) : null,
         req.params.id,
       ]
     );
