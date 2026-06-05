@@ -88,7 +88,7 @@ router.post('/salvar', async (req, res, next) => {
             `${ftA}-${ftB}`,htA!=null?`${htA}-${htB}`:null,ftA+ftB,ftA>0&&ftB>0,ftA>ftB,ftB>ftA,ftA===ftB,
             htA!=null?(htA+htB>=3):false, r.startTime]);
         salvos++;
-      } catch(e) {}
+      } catch(e) { if(salvos===0) console.error('[b365 insert] liga='+r.liga+' eventId='+eventId+' err='+e.message); }
     }
     res.json({ ok: true, salvos, recebidos: resultados.length });
   } catch(e) { next(e); }
