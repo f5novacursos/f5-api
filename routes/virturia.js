@@ -95,7 +95,18 @@ router.post('/salvar', async (req, res, next) => {
             hora = EXCLUDED.hora,
             slot = EXCLUDED.slot,
             slot_min = EXCLUDED.slot_min,
-            start_time = EXCLUDED.start_time
+            start_time = EXCLUDED.start_time,
+            ft_a = EXCLUDED.ft_a,
+            ft_b = EXCLUDED.ft_b,
+            ht_a = EXCLUDED.ht_a,
+            ht_b = EXCLUDED.ht_b,
+            ft_str = EXCLUDED.ft_str,
+            ht_str = EXCLUDED.ht_str,
+            gols_total = EXCLUDED.gols_total,
+            is_btts = EXCLUDED.is_btts,
+            casa_ganha = EXCLUDED.casa_ganha,
+            visit_ganha = EXCLUDED.visit_ganha,
+            empate = EXCLUDED.empate
         `, [
           String(r.id), r.liga, hora, slotIdx, slotMin,
           r.teamA, r.teamB,
