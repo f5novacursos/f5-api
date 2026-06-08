@@ -129,4 +129,115 @@ router.get('/stats', async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
+
+// GET /api/virturia-b365/padroes-auto
+router.get('/padroes-auto', async (req, res, next) => {
+  try {
+    const { liga, horas = 168, min_ocorrencias = 3, min_confianca = 60 } = req.query;
+    const cutoffMs = Date.now() - Number(horas) * 3600000;
+    const ligaParam = liga ? [cutoffMs, liga] : [cutoffMs];
+    const ligaFilter = liga ? `AND liga = $2` : '';
+
+    const r = await db.query(`
+      SELECT liga, hora, slot_min, ft_str, gols_total, is_btts,
+             casa_ganha, visit_ganha, empate, start_time,
+             DATE(TO_TIMESTAMP(start_time/1000) AT TIME ZONE 'America/Sao_Paulo') as dia
+      FROM virturia_resultados_b365
+      WHERE start_time > $1 ${ligaFilter}
+      ORDER BY liga, start_time ASC
+    `, ligaParam);
+
+    if (r.rows.length < 10) return res.json({ ok: true, total: 0, padroes: [] });
+
+    // Agrupa por liga+dia+hora
+    const linhaMap = {};
+    for (const j of r.rows) {
+      const k = `${j.liga}|${j.dia}|${j.hora}`;
+      if (!linhaMap[k]) linhaMap[k] = { liga: j.liga, ts: Number(j.start_time), slots: [] };
+      if (Number(j.start_time) < linhaMap[k].ts) linhaMap[k].ts = Number(j.start_time);
+      linhaMap[k].slots.push(j);
+    }
+
+    // Por liga, ordena linhas por tempo
+    const ligaLinhas = {};
+    for (const v of Object.values(linhaMap)) {
+      if (!ligaLinhas[v.liga]) ligaLinhas[v.liga] = [];
+      v.slots.sort((a, b) => a.slot_min - b.slot_min);
+      ligaLinhas[v.liga].push(v);
+    }
+    for (const l in ligaLinhas) ligaLinhas[l].sort((a, b) => a.ts - b.ts);
+
+    const padroes = [];
+    const minOcorr = Number(min_ocorrencias);
+    const minConf = Number(min_confianca);
+
+    function tagsResultado(j) {
+      const t = [];
+      if (j.gols_total >= 3) t.push('OVER 2.5'); else t.push('UNDER 2.5');
+      if (j.gols_total >= 2) t.push('OVER 1.5'); 
+      if (j.is_btts) t.push('AMBAS SIM');
+      if (j.empate) t.push('EMPATE');
+      if (j.gols_total === 0) t.push('0-0');
+      t.push(j.ft_str);
+      return t;
+    }
+
+    // PADRÃO VERTICAL: mesmo slot em horas seguidas
+    for (const [ligaKey, linhas] of Object.entries(ligaLinhas)) {
+      const todosSlots = [...new Set(linhas.flatMap(l => l.slots.map(s => s.slot_min)))];
+      for (const slotMin of todosSlots) {
+        const seq = linhas.map(l => l.slots.find(s => s.slot_min === slotMin)).filter(Boolean);
+        if (seq.length < minOcorr + 1) continue;
+        const acc = {};
+        for (let i = 0; i < seq.length - 1; i++) {
+          const cond = seq[i].ft_str;
+          const prox = seq[i + 1];
+          if (!acc[cond]) acc[cond] = { total: 0, res: {} };
+          acc[cond].total++;
+          for (const t of tagsResultado(prox)) acc[cond].res[t] = (acc[cond].res[t] || 0) + 1;
+        }
+        for (const [cond, v] of Object.entries(acc)) {
+          if (v.total < minOcorr) continue;
+          for (const [res, cnt] of Object.entries(v.res)) {
+            const conf = Math.round(cnt / v.total * 100);
+            if (conf < minConf) continue;
+            padroes.push({ id: `v_${ligaKey}_${slotMin}_${cond}_${res}`.replace(/\W/g,'_'), tipo: 'vertical', liga: ligaKey, slot_min: slotMin, condicao: [cond], resultado: res, ocorrencias: v.total, acertos: cnt, confianca: conf, descricao: `Slot ${slotMin}': saiu ${cond} → próxima hora: ${res}` });
+          }
+        }
+      }
+    }
+
+    // PADRÃO HORIZONTAL: slots seguidos na mesma hora
+    for (const [ligaKey, linhas] of Object.entries(ligaLinhas)) {
+      const acc = {};
+      for (const linha of linhas) {
+        const slots = linha.slots;
+        for (let i = 0; i < slots.length - 1; i++) {
+          const cond = slots[i].ft_str;
+          const prox = slots[i + 1];
+          if (!acc[cond]) acc[cond] = { total: 0, res: {} };
+          acc[cond].total++;
+          for (const t of tagsResultado(prox)) acc[cond].res[t] = (acc[cond].res[t] || 0) + 1;
+        }
+      }
+      for (const [cond, v] of Object.entries(acc)) {
+        if (v.total < minOcorr) continue;
+        for (const [res, cnt] of Object.entries(v.res)) {
+          const conf = Math.round(cnt / v.total * 100);
+          if (conf < minConf) continue;
+          padroes.push({ id: `h_${ligaKey}_${cond}_${res}`.replace(/\W/g,'_'), tipo: 'horizontal', liga: ligaKey, slot_min: null, condicao: [cond], resultado: res, ocorrencias: v.total, acertos: cnt, confianca: conf, descricao: `Mesma hora: depois de ${cond} → próximo slot: ${res}` });
+        }
+      }
+    }
+
+    const vistos = new Set();
+    const final = padroes
+      .filter(p => { if (vistos.has(p.id)) return false; vistos.add(p.id); return true; })
+      .sort((a, b) => b.confianca - a.confianca || b.ocorrencias - a.ocorrencias)
+      .slice(0, 100);
+
+    res.json({ ok: true, total: final.length, horas: Number(horas), padroes: final });
+  } catch(e) { next(e); }
+});
+
 module.exports = router;
