@@ -22,6 +22,7 @@ app.use('/api/pagamentos',  require('./routes/pagamentos'));
 app.use('/api/certificado', require('./routes/certificados'));
 app.use('/api/aulas',       require('./routes/aulas'));
 app.use('/api/interessados', require('./routes/interessados'));
+app.use('/api/frequencia',  require('./routes/frequencia'));
 app.use('/api/financeiro',  require('./routes/financeiro'));
 app.use('/api/contato',     require('./routes/contato'));
 // Virturia: nunca cachear — dados mudam a cada minuto
