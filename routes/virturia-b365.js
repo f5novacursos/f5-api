@@ -171,15 +171,13 @@ router.get('/padroes-auto', async (req, res, next) => {
     const minOcorr = Number(min_ocorrencias);
     const minConf = Number(min_confianca);
 
-    function tagsResultado(j) {
-      const t = [];
-      if (j.gols_total >= 3) t.push('OVER 2.5'); else t.push('UNDER 2.5');
-      if (j.gols_total >= 2) t.push('OVER 1.5'); 
-      if (j.is_btts) t.push('AMBAS SIM');
-      if (j.empate) t.push('EMPATE');
-      if (j.gols_total === 0) t.push('0-0');
-      t.push(j.ft_str);
-      return t;
+    // Retorna só O resultado principal — sem contradições
+    function tagPrincipal(j) {
+      if (j.gols_total === 0) return '0-0';
+      if (j.gols_total >= 4) return 'OVER 3.5';
+      if (j.gols_total >= 3) return 'OVER 2.5';
+      if (j.gols_total >= 2) return 'OVER 1.5';
+      return 'UNDER 1.5';
     }
 
     // PADRÃO VERTICAL: mesmo slot em horas seguidas
@@ -194,15 +192,18 @@ router.get('/padroes-auto', async (req, res, next) => {
           const prox = seq[i + 1];
           if (!acc[cond]) acc[cond] = { total: 0, res: {} };
           acc[cond].total++;
-          for (const t of tagsResultado(prox)) acc[cond].res[t] = (acc[cond].res[t] || 0) + 1;
+          const tag = tagPrincipal(prox);
+          acc[cond].res[tag] = (acc[cond].res[tag] || 0) + 1;
         }
         for (const [cond, v] of Object.entries(acc)) {
           if (v.total < minOcorr) continue;
-          for (const [res, cnt] of Object.entries(v.res)) {
-            const conf = Math.round(cnt / v.total * 100);
-            if (conf < minConf) continue;
-            padroes.push({ id: `v_${ligaKey}_${slotMin}_${cond}_${res}`.replace(/\W/g,'_'), tipo: 'vertical', liga: ligaKey, slot_min: slotMin, condicao: [cond], resultado: res, ocorrencias: v.total, acertos: cnt, confianca: conf, descricao: `Slot ${slotMin}': saiu ${cond} → próxima hora: ${res}` });
-          }
+          // Pega APENAS o resultado mais frequente
+          const melhor = Object.entries(v.res).sort((a,b) => b[1]-a[1])[0];
+          if (!melhor) continue;
+          const [res, cnt] = melhor;
+          const conf = Math.round(cnt / v.total * 100);
+          if (conf < minConf) continue;
+          padroes.push({ id: `v_${ligaKey}_${slotMin}_${cond}_${res}`.replace(/\W/g,'_'), tipo: 'vertical', liga: ligaKey, slot_min: slotMin, condicao: [cond], resultado: res, ocorrencias: v.total, acertos: cnt, confianca: conf, descricao: `Slot ${slotMin}': saiu ${cond} → próxima hora: ${res}` });
         }
       }
     }
@@ -217,16 +218,19 @@ router.get('/padroes-auto', async (req, res, next) => {
           const prox = slots[i + 1];
           if (!acc[cond]) acc[cond] = { total: 0, res: {} };
           acc[cond].total++;
-          for (const t of tagsResultado(prox)) acc[cond].res[t] = (acc[cond].res[t] || 0) + 1;
+          const tag = tagPrincipal(prox);
+          acc[cond].res[tag] = (acc[cond].res[tag] || 0) + 1;
         }
       }
       for (const [cond, v] of Object.entries(acc)) {
         if (v.total < minOcorr) continue;
-        for (const [res, cnt] of Object.entries(v.res)) {
-          const conf = Math.round(cnt / v.total * 100);
-          if (conf < minConf) continue;
-          padroes.push({ id: `h_${ligaKey}_${cond}_${res}`.replace(/\W/g,'_'), tipo: 'horizontal', liga: ligaKey, slot_min: null, condicao: [cond], resultado: res, ocorrencias: v.total, acertos: cnt, confianca: conf, descricao: `Mesma hora: depois de ${cond} → próximo slot: ${res}` });
-        }
+        // Pega APENAS o resultado mais frequente
+        const melhor = Object.entries(v.res).sort((a,b) => b[1]-a[1])[0];
+        if (!melhor) continue;
+        const [res, cnt] = melhor;
+        const conf = Math.round(cnt / v.total * 100);
+        if (conf < minConf) continue;
+        padroes.push({ id: `h_${ligaKey}_${cond}_${res}`.replace(/\W/g,'_'), tipo: 'horizontal', liga: ligaKey, slot_min: null, condicao: [cond], resultado: res, ocorrencias: v.total, acertos: cnt, confianca: conf, descricao: `Mesma hora: depois de ${cond} → próximo slot: ${res}` });
       }
     }
 
