@@ -254,4 +254,7 @@ router.post('/limpar', async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
+// GET /api/virturia-b365/padroes-live — minerador 8 geometrias (mesmo motor da Betano)
+router.get('/padroes-live', require('../lib/padroes-live')(db, 'virturia_resultados_b365'));
+
 module.exports = router;
