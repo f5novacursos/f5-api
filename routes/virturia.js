@@ -267,6 +267,22 @@ router.get('/padroes-auto', async (req, res, next) => {
       return 'UNDER 1.5';
     }
 
+    // ── BASE RATE: frequência natural de cada resultado por liga ──
+    // Sem isso "70% OVER 1.5" engana: se OVER 1.5 já sai 72% sozinho,
+    // o padrão é PIOR que o acaso. O que vale é o EDGE = conf - base.
+    const baseCount = {};
+    for (const j of r.rows) {
+      const tg = tagPrincipal(j);
+      if (!baseCount[j.liga]) baseCount[j.liga] = { __total: 0 };
+      baseCount[j.liga][tg] = (baseCount[j.liga][tg] || 0) + 1;
+      baseCount[j.liga].__total++;
+    }
+    function baseRate(liga, tag) {
+      const b = baseCount[liga];
+      if (!b || !b.__total) return 0;
+      return Math.round((b[tag] || 0) / b.__total * 100);
+    }
+
     // PADRÃO VERTICAL: mesmo slot em horas seguidas
     for (const [ligaKey, linhas] of Object.entries(ligaLinhas)) {
       const todosSlots = [...new Set(linhas.flatMap(l => l.slots.map(s => s.slot_min)))];
@@ -289,11 +305,13 @@ router.get('/padroes-auto', async (req, res, next) => {
           const [res, cnt] = melhor;
           const conf = Math.round(cnt / v.total * 100);
           if (conf < minConf) continue;
+          const baseV = baseRate(ligaKey, res);
           padroes.push({
             id: `v_${ligaKey}_${slotMin}_${cond}_${res}`.replace(/\W/g,'_'),
             tipo: 'vertical', liga: ligaKey, slot_min: slotMin,
             condicao: [cond], resultado: res,
             ocorrencias: v.total, acertos: cnt, confianca: conf,
+            base_rate: baseV, edge: conf - baseV,
             descricao: `Slot ${slotMin}': saiu ${cond} → próxima hora: ${res}`
           });
         }
@@ -321,11 +339,13 @@ router.get('/padroes-auto', async (req, res, next) => {
         const [res, cnt] = melhor;
         const conf = Math.round(cnt / v.total * 100);
         if (conf < minConf) continue;
+        const baseH = baseRate(ligaKey, res);
         padroes.push({
           id: `h_${ligaKey}_${cond}_${res}`.replace(/\W/g,'_'),
           tipo: 'horizontal', liga: ligaKey, slot_min: null,
           condicao: [cond], resultado: res,
           ocorrencias: v.total, acertos: cnt, confianca: conf,
+          base_rate: baseH, edge: conf - baseH,
           descricao: `Mesma hora: depois de ${cond} → próximo slot: ${res}`
         });
       }
@@ -334,7 +354,7 @@ router.get('/padroes-auto', async (req, res, next) => {
     const vistos = new Set();
     const final = padroes
       .filter(p => { if (vistos.has(p.id)) return false; vistos.add(p.id); return true; })
-      .sort((a, b) => b.confianca - a.confianca || b.ocorrencias - a.ocorrencias)
+      .sort((a, b) => (b.edge - a.edge) || (b.confianca - a.confianca) || (b.ocorrencias - a.ocorrencias))
       .slice(0, 100);
 
     res.json({ ok: true, total: final.length, horas: Number(horas), padroes: final });
