@@ -1,5 +1,21 @@
 const router = require('express').Router();
 const db = require('../db');
+const https = require('https');
+
+function notificarN8n(payload) {
+  try {
+    const body = JSON.stringify(payload);
+    const req = https.request({
+      hostname: 'n8n.f5novacursos.com.br',
+      path:     '/webhook/f5nova-reserva',
+      method:   'POST',
+      headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, res => res.resume());
+    req.on('error', e => console.error('[n8n reserva]', e.message));
+    req.write(body);
+    req.end();
+  } catch(e) { console.error('[n8n reserva]', e.message); }
+}
 
 // GET /api/reservas — listar reservas
 router.get('/', async (req, res, next) => {
@@ -41,6 +57,11 @@ router.post('/', async (req, res, next) => {
       [nome, whatsapp, interesse, turma_pref, origem ?? 'formulario_site', statusValido]
     );
     res.status(201).json(rows[0]);
+
+    // Notificar n8n para disparar mensagem da Ana no WhatsApp
+    const reserva = rows[0];
+    notificarN8n({ nome: reserva.nome, whatsapp: reserva.whatsapp, curso: reserva.interesse });
+
   } catch (err) { next(err); }
 });
 
