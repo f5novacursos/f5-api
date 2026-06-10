@@ -50,6 +50,14 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, ts: new Date().toISOString() });
 });
 
+// ── Coletor Bet365 VirtuIA — substitui Cloudflare Worker ─────────────────
+// IMPORTANTE: a rota collector-status precisa ser registrada ANTES do 404,
+// senao o handler de "Rota nao encontrada" intercepta a requisicao primeiro.
+const { startCollector: startB365, getStatus: getB365Status } = require('./routes/collector-b365');
+app.get('/api/virturia-b365/collector-status', (req, res) => {
+  res.json({ ok: true, ...getB365Status() });
+});
+
 // ── 404 ────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({ error: 'Rota não encontrada' });
@@ -63,13 +71,5 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`✅  F5 API rodando na porta ${PORT}`);
-});
-
-// ── Coletor Bet365 VirtuIA — substitui Cloudflare Worker ─────────────────
-const { startCollector: startB365, getStatus: getB365Status } = require('./routes/collector-b365');
-startB365();
-
-// Endpoint de status do coletor (interno)
-app.get('/api/virturia-b365/collector-status', (req, res) => {
-  res.json({ ok: true, ...getB365Status() });
+  startB365(); // inicia o coletor depois que a API sobe
 });
