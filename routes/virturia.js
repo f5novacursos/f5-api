@@ -362,18 +362,19 @@ router.get('/padroes-auto', async (req, res, next) => {
 });
 
 // ════════════════════════════════════════════════════════════════
-// GET /api/virturia/padroes-live — TORRES ATIVAS AGORA
-// Detecta sequências em formação (vertical = mesmo slot em horas
-// seguidas, horizontal = slots seguidos na hora atual) e calcula
-// pela história quantas vezes a sequência REPETIU ou QUEBROU.
-// É o que o Eduardo fazia manualmente na planilha ("torre em bloco").
+// GET /api/virturia/padroes-live — ONDE JOGAR AGORA
+// Minera o histórico em várias geometrias (vertical, torre 2/3,
+// horizontal, seq. horizontal, diagonais, cruzamento) × 3 leituras
+// (placar exato, total de gols, over/under) e cruza com o estado
+// ATUAL da matrix. Saída: liga + hora alvo + slot alvo + previsão
+// + probabilidade + amostra + edge. Cache 60s.
 // ════════════════════════════════════════════════════════════════
 let _liveCache = { key: '', ts: 0, data: null };
 
 router.get('/padroes-live', async (req, res, next) => {
   try {
-    const { liga, horas = 168, min_torre = 3, min_amostra = 5 } = req.query;
-    const cacheKey = `${liga || 'all'}|${horas}|${min_torre}`;
+    const { liga, horas = 168, min_conf = 70, min_amostra = 5 } = req.query;
+    const cacheKey = `${liga || 'all'}|${horas}|${min_conf}|${min_amostra}`;
     if (_liveCache.key === cacheKey && Date.now() - _liveCache.ts < 60000) {
       return res.json(_liveCache.data);
     }
@@ -381,7 +382,6 @@ router.get('/padroes-live', async (req, res, next) => {
     const cutoffMs = Date.now() - Number(horas) * 3600000;
     const params = liga ? [cutoffMs, liga] : [cutoffMs];
     const ligaFilter = liga ? 'AND liga = $2' : '';
-
     const r = await db.query(`
       SELECT liga, hora, slot_min, ft_str, gols_total, is_btts, start_time,
              DATE(TO_TIMESTAMP(start_time/1000) AT TIME ZONE 'America/Sao_Paulo') as dia
@@ -389,172 +389,177 @@ router.get('/padroes-live', async (req, res, next) => {
       WHERE start_time > $1 ${ligaFilter}
       ORDER BY liga, start_time ASC
     `, params);
-
-    if (r.rows.length < 30) {
-      return res.json({ ok: true, total: 0, ativos: [], aviso: 'Dados insuficientes' });
+    if (r.rows.length < 50) {
+      return res.json({ ok: true, total: 0, previsoes: [], aviso: 'Dados insuficientes' });
     }
 
-    // ── Dimensões de mercado (o que o Eduardo marca na planilha) ──
-    const DIMS = {
-      over_under: { tag: j => (j.gols_total >= 3 ? 'OVER 2.5' : 'UNDER 2.5'), minTorre: Math.max(3, Number(min_torre)) },
-      ambas:      { tag: j => (j.is_btts ? 'AMBAS' : 'AMBAS NÃO'),            minTorre: Math.max(3, Number(min_torre)) },
-      gols:       { tag: j => `${j.gols_total} GOL`,                          minTorre: Math.max(3, Number(min_torre)) },
-      placar:     { tag: j => j.ft_str,                                       minTorre: 2 },
-    };
     const HORA_MS = 3600000;
-    const consecutivo = (tsA, tsB) => { const d = tsB - tsA; return d > HORA_MS * 0.5 && d < HORA_MS * 1.5; };
+    const agora = Date.now();
+    const consecutivo = (a, b) => { const d = b - a; return d > HORA_MS * 0.5 && d < HORA_MS * 1.5; };
 
-    // ── Monta linhas (liga|dia|hora) ──
+    // Mercados apostáveis (o que pode sair na célula alvo)
+    const MARKETS = {
+      '0-0':       g => g.gols_total === 0,
+      'OVER 1.5':  g => g.gols_total >= 2,
+      'UNDER 1.5': g => g.gols_total <= 1,
+      'OVER 2.5':  g => g.gols_total >= 3,
+      'UNDER 2.5': g => g.gols_total <= 2,
+      'OVER 3.5':  g => g.gols_total >= 4,
+      'AMBAS SIM': g => g.is_btts,
+    };
+    // Leituras da célula condição
+    const CONDS = {
+      placar: g => g.ft_str,
+      gols:   g => `${g.gols_total} GOL`,
+      ou:     g => (g.gols_total >= 3 ? 'OVER 2.5' : 'UNDER 2.5'),
+    };
+
+    // ── monta linhas (liga|dia|hora) e células por slot ──
     const linhaMap = {};
     for (const j of r.rows) {
       const k = `${j.liga}|${j.dia}|${j.hora}`;
-      if (!linhaMap[k]) linhaMap[k] = { liga: j.liga, hora: j.hora, ts: Number(j.start_time), slots: [] };
+      if (!linhaMap[k]) linhaMap[k] = { liga: j.liga, hora: j.hora, ts: Number(j.start_time), cells: {} };
       if (Number(j.start_time) < linhaMap[k].ts) linhaMap[k].ts = Number(j.start_time);
-      linhaMap[k].slots.push(j);
+      linhaMap[k].cells[j.slot_min] = j;
     }
     const ligaLinhas = {};
     for (const v of Object.values(linhaMap)) {
-      if (!ligaLinhas[v.liga]) ligaLinhas[v.liga] = [];
-      v.slots.sort((a, b) => a.slot_min - b.slot_min);
-      ligaLinhas[v.liga].push(v);
+      (ligaLinhas[v.liga] = ligaLinhas[v.liga] || []).push(v);
     }
     for (const l in ligaLinhas) ligaLinhas[l].sort((a, b) => a.ts - b.ts);
 
-    // ── Estatística histórica POOLED por (dim, tag, k) ──
-    // seqs = lista de sequências [{tag, ts}] em ordem cronológica.
-    // Conta: janelas onde os últimos k são iguais a tag e existe próximo
-    // consecutivo → repetiu (mesmo tag) ou quebrou.
-    function histRepete(seqs, tag, k) {
-      let amostra = 0, repetiu = 0;
-      for (const seq of seqs) {
-        for (let i = k - 1; i < seq.length - 1; i++) {
-          // janela seq[i-k+1 .. i]: todos com o tag e horas consecutivas
-          let ok = true;
-          for (let w = i - k + 1; w <= i; w++) {
-            if (seq[w].tag !== tag) { ok = false; break; }
-            if (w > i - k + 1 && !consecutivo(seq[w - 1].ts, seq[w].ts)) { ok = false; break; }
-          }
-          if (!ok) continue;
-          if (!consecutivo(seq[i].ts, seq[i + 1].ts)) continue; // próximo precisa ser a hora seguinte
-          amostra++;
-          if (seq[i + 1].tag === tag) repetiu++;
-        }
-      }
-      return { amostra, repetiu };
-    }
-
-    const ativos = [];
-    const agora = Date.now();
+    const previsoes = [];
 
     for (const [ligaKey, linhas] of Object.entries(ligaLinhas)) {
-      // ── VERTICAL: por slot, sequência através das horas ──
-      const todosSlots = [...new Set(linhas.flatMap(l => l.slots.map(s => s.slot_min)))].sort((a, b) => a - b);
-      for (const [dimKey, dim] of Object.entries(DIMS)) {
-        // sequências verticais (uma por slot) — usadas tanto p/ detectar quanto p/ histórico pooled
-        const seqsVert = todosSlots.map(sm =>
-          linhas.map(l => {
-            const g = l.slots.find(s => s.slot_min === sm);
-            return g ? { tag: dim.tag(g), ts: l.ts, hora: l.hora, ft: g.ft_str, gols: g.gols_total } : null;
-          }).filter(Boolean)
-        );
+      const slotList = [...new Set(linhas.flatMap(l => Object.keys(l.cells).map(Number)))].sort((a, b) => a - b);
 
-        for (let si = 0; si < todosSlots.length; si++) {
-          const seq = seqsVert[si];
-          if (seq.length < 2) continue;
-          const last = seq[seq.length - 1];
-          // só é "ativo" se o último jogo é recente (até 2h atrás)
-          if (agora - last.ts > 2 * HORA_MS) continue;
-          // torre terminando no último jogo
-          let torre = 1;
-          while (torre < seq.length) {
-            const a = seq[seq.length - 1 - torre], b = seq[seq.length - torre];
-            if (a.tag === last.tag && consecutivo(a.ts, b.ts)) torre++; else break;
+      // taxa base por mercado (frequência natural na liga)
+      const baseN = {}; let baseT = 0;
+      for (const l of linhas) for (const s in l.cells) {
+        const g = l.cells[s]; baseT++;
+        for (const [m, fn] of Object.entries(MARKETS)) if (fn(g)) baseN[m] = (baseN[m] || 0) + 1;
+      }
+      const base = m => baseT ? Math.round((baseN[m] || 0) / baseT * 100) : 0;
+
+      const cell = (li, si) => {
+        if (li < 0 || li >= linhas.length || si < 0 || si >= slotList.length) return null;
+        return linhas[li].cells[slotList[si]] || null;
+      };
+      const consecLinhas = (a, b) => a >= 0 && b < linhas.length && consecutivo(linhas[a].ts, linhas[b].ts);
+
+      // ── GEOMETRIAS: células condição → célula alvo ──
+      const GEOMS = {
+        vertical:   { cond: (li, si) => [cell(li, si)],                                        alvo: (li, si) => ({ li: li + 1, si }),         check: li => true },
+        torre2:     { cond: (li, si) => [cell(li - 1, si), cell(li, si)],                      alvo: (li, si) => ({ li: li + 1, si }),         check: li => consecLinhas(li - 1, li) },
+        torre3:     { cond: (li, si) => [cell(li - 2, si), cell(li - 1, si), cell(li, si)],    alvo: (li, si) => ({ li: li + 1, si }),         check: li => consecLinhas(li - 2, li - 1) && consecLinhas(li - 1, li) },
+        horizontal: { cond: (li, si) => [cell(li, si)],                                        alvo: (li, si) => ({ li, si: si + 1 }),         check: li => true },
+        seq_horiz:  { cond: (li, si) => [cell(li, si - 1), cell(li, si)],                      alvo: (li, si) => ({ li, si: si + 1 }),         check: li => true },
+        diag_dir:   { cond: (li, si) => [cell(li, si)],                                        alvo: (li, si) => ({ li: li + 1, si: si + 1 }), check: li => true },
+        diag_esq:   { cond: (li, si) => [cell(li, si)],                                        alvo: (li, si) => ({ li: li + 1, si: si - 1 }), check: li => true },
+        cruzamento: { cond: (li, si) => [cell(li, si - 1), cell(li, si + 1)],                  alvo: (li, si) => ({ li: li + 1, si }),         check: li => true },
+      };
+
+      // ── MINERAÇÃO: conta o que saiu no alvo após cada condição ──
+      const acc = {}; // `${geom}|${dim}|${condKey}` → { total, out: {mercado: count} }
+      for (let li = 0; li < linhas.length; li++) {
+        for (let si = 0; si < slotList.length; si++) {
+          for (const [gName, G] of Object.entries(GEOMS)) {
+            if (!G.check(li)) continue;
+            const condCells = G.cond(li, si);
+            if (condCells.some(c => !c)) continue;
+            const ap = G.alvo(li, si);
+            if (ap.li !== li && !consecLinhas(li, ap.li)) continue; // hora alvo precisa ser a seguinte
+            const tCell = cell(ap.li, ap.si);
+            if (!tCell) continue;
+            for (const [dim, fn] of Object.entries(CONDS)) {
+              const condKey = condCells.map(fn).join(',');
+              // conta em dobro: específico do slot (fiel) + geral da liga (mais amostra)
+              for (const key of [`${gName}|${dim}|${slotList[si]}|${condKey}`, `${gName}|${dim}|*|${condKey}`]) {
+                if (!acc[key]) acc[key] = { total: 0, out: {} };
+                acc[key].total++;
+                for (const [m, mfn] of Object.entries(MARKETS)) {
+                  if (mfn(tCell)) acc[key].out[m] = (acc[key].out[m] || 0) + 1;
+                }
+              }
+            }
           }
-          if (torre < dim.minTorre) continue;
-
-          // histórico: tenta k=torre, desce até achar amostra suficiente
-          let k = torre, hist = { amostra: 0, repetiu: 0 };
-          while (k >= dim.minTorre) {
-            hist = histRepete(seqsVert, last.tag, k);
-            if (hist.amostra >= Number(min_amostra)) break;
-            k--;
-          }
-          if (hist.amostra < 1) continue;
-          const pct = Math.round(hist.repetiu / hist.amostra * 100);
-
-          ativos.push({
-            id: `lv_${ligaKey}_${todosSlots[si]}_${dimKey}_${last.tag}`.replace(/\W/g, '_'),
-            tipo: 'vertical', liga: ligaKey, dimensao: dimKey,
-            tag: last.tag, slot_min: todosSlots[si], torre,
-            celulas: seq.slice(-torre).map(c => ({ hora: c.hora, ft: c.ft, gols: c.gols })),
-            alvo: { hora: (last.hora + 1) % 24, slot_min: todosSlots[si], ts: last.ts + HORA_MS },
-            repete_pct: pct, quebra_pct: 100 - pct,
-            amostra: hist.amostra, k_historico: k,
-            confiavel: hist.amostra >= Number(min_amostra),
-            descricao: `${last.tag} x${torre} no slot ${todosSlots[si]}' — historicamente repete ${pct}% (${hist.repetiu}/${hist.amostra})`
-          });
         }
       }
 
-      // ── HORIZONTAL: slots seguidos dentro da hora mais recente ──
-      const ultima = linhas[linhas.length - 1];
-      if (ultima && agora - ultima.ts < 2 * HORA_MS) {
-        for (const [dimKey, dim] of Object.entries(DIMS)) {
-          const seqH = ultima.slots.map(g => ({ tag: dim.tag(g), ts: Number(g.start_time), slot: g.slot_min, ft: g.ft_str, gols: g.gols_total }));
-          if (seqH.length < dim.minTorre) continue;
-          const last = seqH[seqH.length - 1];
-          let torre = 1;
-          while (torre < seqH.length && seqH[seqH.length - 1 - torre].tag === last.tag) torre++;
-          if (torre < dim.minTorre) continue;
+      // ── ESTADO ATUAL: condições satisfeitas com alvo ainda em aberto ──
+      for (let li = Math.max(0, linhas.length - 2); li < linhas.length; li++) {
+        for (let si = 0; si < slotList.length; si++) {
+          for (const [gName, G] of Object.entries(GEOMS)) {
+            if (!G.check(li)) continue;
+            const condCells = G.cond(li, si);
+            if (condCells.some(c => !c)) continue;
+            const ap = G.alvo(li, si);
+            if (ap.si < 0 || ap.si >= slotList.length) continue;
+            if (cell(ap.li, ap.si)) continue; // alvo já saiu → não é previsão
 
-          // histórico horizontal pooled: todas as linhas da liga
-          const seqsHor = linhas.map(l => l.slots.map(g => ({ tag: dim.tag(g), ts: Number(g.start_time) })));
-          // p/ horizontal os jogos são ~3min — adapta consecutivo via índice (já são ordenados, sem buracos relevantes)
-          function histRepeteH(tag, k) {
-            let amostra = 0, repetiu = 0;
-            for (const s of seqsHor) {
-              for (let i = k - 1; i < s.length - 1; i++) {
-                let ok = true;
-                for (let w = 0; w < k; w++) if (s[i - w].tag !== tag) { ok = false; break; }
-                if (!ok) continue;
-                amostra++;
-                if (s[i + 1].tag === tag) repetiu++;
-              }
+            const lastCell = condCells[condCells.length - 1];
+            const condTs = Number(lastCell.start_time);
+            let alvoTs, alvoHora;
+            if (ap.li === li) { // mesma hora, slot seguinte
+              alvoTs = condTs + (slotList[ap.si] - lastCell.slot_min) * 60000;
+              alvoHora = linhas[li].hora;
+            } else {            // próxima hora
+              alvoTs = condTs + HORA_MS + (slotList[ap.si] - lastCell.slot_min) * 60000;
+              alvoHora = (linhas[li].hora + 1) % 24;
             }
-            return { amostra, repetiu };
-          }
-          let k = torre, hist = { amostra: 0, repetiu: 0 };
-          while (k >= dim.minTorre) {
-            hist = histRepeteH(last.tag, k);
-            if (hist.amostra >= Number(min_amostra)) break;
-            k--;
-          }
-          if (hist.amostra < 1) continue;
-          const pct = Math.round(hist.repetiu / hist.amostra * 100);
+            if (alvoTs < agora - 10 * 60000) continue; // já era pra ter saído → stale
+            if (alvoTs > agora + 75 * 60000) continue; // longe demais
 
-          ativos.push({
-            id: `lh_${ligaKey}_${dimKey}_${last.tag}`.replace(/\W/g, '_'),
-            tipo: 'horizontal', liga: ligaKey, dimensao: dimKey,
-            tag: last.tag, slot_min: last.slot, torre,
-            celulas: seqH.slice(-torre).map(c => ({ slot_min: c.slot, ft: c.ft, gols: c.gols })),
-            alvo: { hora: ultima.hora, proximo_slot: true },
-            repete_pct: pct, quebra_pct: 100 - pct,
-            amostra: hist.amostra, k_historico: k,
-            confiavel: hist.amostra >= Number(min_amostra),
-            descricao: `${last.tag} x${torre} seguidos na hora ${ultima.hora}h — repete ${pct}% (${hist.repetiu}/${hist.amostra})`
-          });
+            for (const [dim, fn] of Object.entries(CONDS)) {
+              const condKey = condCells.map(fn).join(',');
+              // prefere estatística do PRÓPRIO slot; sem amostra, cai pra geral da liga
+              let st = acc[`${gName}|${dim}|${slotList[si]}|${condKey}`];
+              let slotEspecifico = true;
+              if (!st || st.total < Number(min_amostra)) {
+                st = acc[`${gName}|${dim}|*|${condKey}`];
+                slotEspecifico = false;
+              }
+              if (!st || st.total < Number(min_amostra)) continue;
+              // melhor mercado deste padrão (maior edge acima da confiança mínima)
+              let best = null;
+              for (const [m, cnt] of Object.entries(st.out)) {
+                const conf = Math.round(cnt / st.total * 100);
+                if (conf < Number(min_conf)) continue;
+                const edge = conf - base(m);
+                if (!best || edge > best.edge) best = { m, conf, cnt, edge };
+              }
+              if (!best || best.edge <= 0) continue;
+              previsoes.push({
+                liga: ligaKey,
+                geometria: gName,
+                dimensao: dim,
+                condicao: condCells.map(c => ({ hora: c.hora, slot_min: c.slot_min, ft: c.ft_str, leitura: fn(c) })),
+                alvo: { hora: alvoHora, slot_min: slotList[ap.si], ts: alvoTs },
+                previsao: best.m,
+                prob: best.conf,
+                amostra: st.total,
+                acertos: best.cnt,
+                base_rate: base(best.m),
+                edge: best.edge,
+                slot_especifico: slotEspecifico
+              });
+            }
+          }
         }
       }
     }
 
-    // ordena: torres maiores + extremos (repete muito OU quebra muito) primeiro
-    ativos.sort((a, b) => {
-      const ea = Math.abs(a.repete_pct - 50) + a.torre * 5;
-      const eb = Math.abs(b.repete_pct - 50) + b.torre * 5;
-      return eb - ea;
-    });
+    // dedupe: mesma liga+alvo+previsão → mantém a maior probabilidade/amostra
+    const byKey = {};
+    for (const p of previsoes) {
+      const k = `${p.liga}|${p.alvo.hora}|${p.alvo.slot_min}|${p.previsao}`;
+      if (!byKey[k] || p.prob > byKey[k].prob || (p.prob === byKey[k].prob && p.amostra > byKey[k].amostra)) byKey[k] = p;
+    }
+    const final = Object.values(byKey)
+      .sort((a, b) => (b.prob - a.prob) || (b.edge - a.edge) || (b.amostra - a.amostra))
+      .slice(0, 80);
 
-    const payload = { ok: true, total: ativos.length, horas: Number(horas), gerado_em: new Date().toISOString(), ativos: ativos.slice(0, 60) };
+    const payload = { ok: true, total: final.length, horas: Number(horas), gerado_em: new Date().toISOString(), previsoes: final };
     _liveCache = { key: cacheKey, ts: Date.now(), data: payload };
     res.json(payload);
   } catch (e) { next(e); }
