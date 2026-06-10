@@ -361,6 +361,205 @@ router.get('/padroes-auto', async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
+// ════════════════════════════════════════════════════════════════
+// GET /api/virturia/padroes-live — TORRES ATIVAS AGORA
+// Detecta sequências em formação (vertical = mesmo slot em horas
+// seguidas, horizontal = slots seguidos na hora atual) e calcula
+// pela história quantas vezes a sequência REPETIU ou QUEBROU.
+// É o que o Eduardo fazia manualmente na planilha ("torre em bloco").
+// ════════════════════════════════════════════════════════════════
+let _liveCache = { key: '', ts: 0, data: null };
+
+router.get('/padroes-live', async (req, res, next) => {
+  try {
+    const { liga, horas = 168, min_torre = 3, min_amostra = 5 } = req.query;
+    const cacheKey = `${liga || 'all'}|${horas}|${min_torre}`;
+    if (_liveCache.key === cacheKey && Date.now() - _liveCache.ts < 60000) {
+      return res.json(_liveCache.data);
+    }
+
+    const cutoffMs = Date.now() - Number(horas) * 3600000;
+    const params = liga ? [cutoffMs, liga] : [cutoffMs];
+    const ligaFilter = liga ? 'AND liga = $2' : '';
+
+    const r = await db.query(`
+      SELECT liga, hora, slot_min, ft_str, gols_total, is_btts, start_time,
+             DATE(TO_TIMESTAMP(start_time/1000) AT TIME ZONE 'America/Sao_Paulo') as dia
+      FROM virturia_resultados
+      WHERE start_time > $1 ${ligaFilter}
+      ORDER BY liga, start_time ASC
+    `, params);
+
+    if (r.rows.length < 30) {
+      return res.json({ ok: true, total: 0, ativos: [], aviso: 'Dados insuficientes' });
+    }
+
+    // ── Dimensões de mercado (o que o Eduardo marca na planilha) ──
+    const DIMS = {
+      over_under: { tag: j => (j.gols_total >= 3 ? 'OVER 2.5' : 'UNDER 2.5'), minTorre: Math.max(3, Number(min_torre)) },
+      ambas:      { tag: j => (j.is_btts ? 'AMBAS' : 'AMBAS NÃO'),            minTorre: Math.max(3, Number(min_torre)) },
+      gols:       { tag: j => `${j.gols_total} GOL`,                          minTorre: Math.max(3, Number(min_torre)) },
+      placar:     { tag: j => j.ft_str,                                       minTorre: 2 },
+    };
+    const HORA_MS = 3600000;
+    const consecutivo = (tsA, tsB) => { const d = tsB - tsA; return d > HORA_MS * 0.5 && d < HORA_MS * 1.5; };
+
+    // ── Monta linhas (liga|dia|hora) ──
+    const linhaMap = {};
+    for (const j of r.rows) {
+      const k = `${j.liga}|${j.dia}|${j.hora}`;
+      if (!linhaMap[k]) linhaMap[k] = { liga: j.liga, hora: j.hora, ts: Number(j.start_time), slots: [] };
+      if (Number(j.start_time) < linhaMap[k].ts) linhaMap[k].ts = Number(j.start_time);
+      linhaMap[k].slots.push(j);
+    }
+    const ligaLinhas = {};
+    for (const v of Object.values(linhaMap)) {
+      if (!ligaLinhas[v.liga]) ligaLinhas[v.liga] = [];
+      v.slots.sort((a, b) => a.slot_min - b.slot_min);
+      ligaLinhas[v.liga].push(v);
+    }
+    for (const l in ligaLinhas) ligaLinhas[l].sort((a, b) => a.ts - b.ts);
+
+    // ── Estatística histórica POOLED por (dim, tag, k) ──
+    // seqs = lista de sequências [{tag, ts}] em ordem cronológica.
+    // Conta: janelas onde os últimos k são iguais a tag e existe próximo
+    // consecutivo → repetiu (mesmo tag) ou quebrou.
+    function histRepete(seqs, tag, k) {
+      let amostra = 0, repetiu = 0;
+      for (const seq of seqs) {
+        for (let i = k - 1; i < seq.length - 1; i++) {
+          // janela seq[i-k+1 .. i]: todos com o tag e horas consecutivas
+          let ok = true;
+          for (let w = i - k + 1; w <= i; w++) {
+            if (seq[w].tag !== tag) { ok = false; break; }
+            if (w > i - k + 1 && !consecutivo(seq[w - 1].ts, seq[w].ts)) { ok = false; break; }
+          }
+          if (!ok) continue;
+          if (!consecutivo(seq[i].ts, seq[i + 1].ts)) continue; // próximo precisa ser a hora seguinte
+          amostra++;
+          if (seq[i + 1].tag === tag) repetiu++;
+        }
+      }
+      return { amostra, repetiu };
+    }
+
+    const ativos = [];
+    const agora = Date.now();
+
+    for (const [ligaKey, linhas] of Object.entries(ligaLinhas)) {
+      // ── VERTICAL: por slot, sequência através das horas ──
+      const todosSlots = [...new Set(linhas.flatMap(l => l.slots.map(s => s.slot_min)))].sort((a, b) => a - b);
+      for (const [dimKey, dim] of Object.entries(DIMS)) {
+        // sequências verticais (uma por slot) — usadas tanto p/ detectar quanto p/ histórico pooled
+        const seqsVert = todosSlots.map(sm =>
+          linhas.map(l => {
+            const g = l.slots.find(s => s.slot_min === sm);
+            return g ? { tag: dim.tag(g), ts: l.ts, hora: l.hora, ft: g.ft_str, gols: g.gols_total } : null;
+          }).filter(Boolean)
+        );
+
+        for (let si = 0; si < todosSlots.length; si++) {
+          const seq = seqsVert[si];
+          if (seq.length < 2) continue;
+          const last = seq[seq.length - 1];
+          // só é "ativo" se o último jogo é recente (até 2h atrás)
+          if (agora - last.ts > 2 * HORA_MS) continue;
+          // torre terminando no último jogo
+          let torre = 1;
+          while (torre < seq.length) {
+            const a = seq[seq.length - 1 - torre], b = seq[seq.length - torre];
+            if (a.tag === last.tag && consecutivo(a.ts, b.ts)) torre++; else break;
+          }
+          if (torre < dim.minTorre) continue;
+
+          // histórico: tenta k=torre, desce até achar amostra suficiente
+          let k = torre, hist = { amostra: 0, repetiu: 0 };
+          while (k >= dim.minTorre) {
+            hist = histRepete(seqsVert, last.tag, k);
+            if (hist.amostra >= Number(min_amostra)) break;
+            k--;
+          }
+          if (hist.amostra < 1) continue;
+          const pct = Math.round(hist.repetiu / hist.amostra * 100);
+
+          ativos.push({
+            id: `lv_${ligaKey}_${todosSlots[si]}_${dimKey}_${last.tag}`.replace(/\W/g, '_'),
+            tipo: 'vertical', liga: ligaKey, dimensao: dimKey,
+            tag: last.tag, slot_min: todosSlots[si], torre,
+            celulas: seq.slice(-torre).map(c => ({ hora: c.hora, ft: c.ft, gols: c.gols })),
+            alvo: { hora: (last.hora + 1) % 24, slot_min: todosSlots[si], ts: last.ts + HORA_MS },
+            repete_pct: pct, quebra_pct: 100 - pct,
+            amostra: hist.amostra, k_historico: k,
+            confiavel: hist.amostra >= Number(min_amostra),
+            descricao: `${last.tag} x${torre} no slot ${todosSlots[si]}' — historicamente repete ${pct}% (${hist.repetiu}/${hist.amostra})`
+          });
+        }
+      }
+
+      // ── HORIZONTAL: slots seguidos dentro da hora mais recente ──
+      const ultima = linhas[linhas.length - 1];
+      if (ultima && agora - ultima.ts < 2 * HORA_MS) {
+        for (const [dimKey, dim] of Object.entries(DIMS)) {
+          const seqH = ultima.slots.map(g => ({ tag: dim.tag(g), ts: Number(g.start_time), slot: g.slot_min, ft: g.ft_str, gols: g.gols_total }));
+          if (seqH.length < dim.minTorre) continue;
+          const last = seqH[seqH.length - 1];
+          let torre = 1;
+          while (torre < seqH.length && seqH[seqH.length - 1 - torre].tag === last.tag) torre++;
+          if (torre < dim.minTorre) continue;
+
+          // histórico horizontal pooled: todas as linhas da liga
+          const seqsHor = linhas.map(l => l.slots.map(g => ({ tag: dim.tag(g), ts: Number(g.start_time) })));
+          // p/ horizontal os jogos são ~3min — adapta consecutivo via índice (já são ordenados, sem buracos relevantes)
+          function histRepeteH(tag, k) {
+            let amostra = 0, repetiu = 0;
+            for (const s of seqsHor) {
+              for (let i = k - 1; i < s.length - 1; i++) {
+                let ok = true;
+                for (let w = 0; w < k; w++) if (s[i - w].tag !== tag) { ok = false; break; }
+                if (!ok) continue;
+                amostra++;
+                if (s[i + 1].tag === tag) repetiu++;
+              }
+            }
+            return { amostra, repetiu };
+          }
+          let k = torre, hist = { amostra: 0, repetiu: 0 };
+          while (k >= dim.minTorre) {
+            hist = histRepeteH(last.tag, k);
+            if (hist.amostra >= Number(min_amostra)) break;
+            k--;
+          }
+          if (hist.amostra < 1) continue;
+          const pct = Math.round(hist.repetiu / hist.amostra * 100);
+
+          ativos.push({
+            id: `lh_${ligaKey}_${dimKey}_${last.tag}`.replace(/\W/g, '_'),
+            tipo: 'horizontal', liga: ligaKey, dimensao: dimKey,
+            tag: last.tag, slot_min: last.slot, torre,
+            celulas: seqH.slice(-torre).map(c => ({ slot_min: c.slot, ft: c.ft, gols: c.gols })),
+            alvo: { hora: ultima.hora, proximo_slot: true },
+            repete_pct: pct, quebra_pct: 100 - pct,
+            amostra: hist.amostra, k_historico: k,
+            confiavel: hist.amostra >= Number(min_amostra),
+            descricao: `${last.tag} x${torre} seguidos na hora ${ultima.hora}h — repete ${pct}% (${hist.repetiu}/${hist.amostra})`
+          });
+        }
+      }
+    }
+
+    // ordena: torres maiores + extremos (repete muito OU quebra muito) primeiro
+    ativos.sort((a, b) => {
+      const ea = Math.abs(a.repete_pct - 50) + a.torre * 5;
+      const eb = Math.abs(b.repete_pct - 50) + b.torre * 5;
+      return eb - ea;
+    });
+
+    const payload = { ok: true, total: ativos.length, horas: Number(horas), gerado_em: new Date().toISOString(), ativos: ativos.slice(0, 60) };
+    _liveCache = { key: cacheKey, ts: Date.now(), data: payload };
+    res.json(payload);
+  } catch (e) { next(e); }
+});
+
 // Coleta direto da Betano pelo VPS (IP fixo, sem Cloudflare)
 const BETANO = 'https://www.betano.bet.br';
 const LIGA_MAP = {
