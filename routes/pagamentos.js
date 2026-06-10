@@ -5,6 +5,9 @@ const db     = require('../db');
 (async () => {
   try {
     await db.query("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS checkout_url VARCHAR(600)");
+    await db.query("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS valor_restante VARCHAR(20)");
+    await db.query("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS prox_pgto DATE");
+    await db.query("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS obs TEXT");
   } catch (e) { console.warn('[pagamentos] migration:', e.message); }
 })();
 
