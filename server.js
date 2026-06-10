@@ -65,5 +65,11 @@ app.listen(PORT, () => {
   console.log(`✅  F5 API rodando na porta ${PORT}`);
 });
 
-// ── Cron VirtuIA removido — coleta feita pelo cron-job.org a cada 3min ────
-// O cron interno causava excesso de requests (18/min) que bloqueava a Betano
+// ── Coletor Bet365 VirtuIA — substitui Cloudflare Worker ─────────────────
+const { startCollector: startB365, getStatus: getB365Status } = require('./routes/collector-b365');
+startB365();
+
+// Endpoint de status do coletor (interno)
+app.get('/api/virturia-b365/collector-status', (req, res) => {
+  res.json({ ok: true, ...getB365Status() });
+});

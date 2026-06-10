@@ -158,6 +158,19 @@ async function webhookInfinitePay(req, res) {
     );
 
     console.log(`[Webhook] Aluno ativado - order_nsu: ${order_nsu}`);
+
+    // Notificar n8n — Confirmação de Matrícula
+    fetch('https://n8n.f5novacursos.com.br/webhook/f5nova-matricula-confirmada', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nome:     rows[0].nome,
+        whatsapp: '55' + rows[0].whatsapp.replace(/\D/g, ''),
+        curso:    rows[0].curso,
+        aluno_id: rows[0].id
+      })
+    }).catch(e => console.error('[n8n matricula]', e.message));
+
     res.status(200).json({ ok: true });
   } catch (err) {
     console.error('[Webhook] Erro:', err);
