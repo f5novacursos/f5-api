@@ -257,122 +257,27 @@ router.post('/limpar', async (req, res, next) => {
 // GET /api/virturia-b365/padroes-live — minerador 8 geometrias (mesmo motor da Betano)
 router.get('/padroes-live', require('../lib/padroes-live')(db, 'virturia_resultados_b365'));
 
-// ════════════════════════════════════════════════════════════════
-// 🔮 GET /api/virturia-b365/previsao — jogos FUTUROS (status pendente
-// no snapshot) cruzados com o histórico do confronto no banco.
-// Para cada jogo que vai acontecer: qual mercado mais saiu nesse
-// confronto (ex: França x Espanha → UNDER 2.5 em 78% das vezes).
-// ════════════════════════════════════════════════════════════════
-const EA_BASE_P = 'https://api.easycoanalytics.com.br';
-const EA_HEADERS_P = {
-  'Accept': 'application/json',
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-  'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
-};
-const EA_LIGAS_P = [
-  { sub: 'express_cup',              liga: 'express_cup' },
-  { sub: 'copa_do_mundo',            liga: 'copa_mundo' },
-  { sub: 'euro_cup',                 liga: 'euro_cup' },
-  { sub: 'super_liga_sul-americana', liga: 'sul_americana' },
-  { sub: 'premiership',              liga: 'premier_league' },
-];
-const EA_SLOTS_P = {
-  express_cup:    Array.from({length:60},(_,i)=>i),
-  copa_mundo:     [1,4,7,10,13,16,19,22,25,28,31,34,37,40,43,46,49,52,55,58],
-  euro_cup:       [2,5,8,11,14,17,20,23,26,29,32,35,38,41,44,47,50,53,56,59],
-  sul_americana:  [1,4,7,10,13,16,19,22,25,28,31,34,37,40,43,46,49,52,55,58],
-  premier_league: [0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,48,51,54,57],
-};
-let _prevCache = { key: '', ts: 0, data: null };
-
-router.get('/previsao', async (req, res, next) => {
-  try {
-    const { liga, horas = 2, min_amostra = 5 } = req.query;
-    const cacheKey = `${liga || 'all'}|${horas}|${min_amostra}`;
-    if (_prevCache.key === cacheKey && Date.now() - _prevCache.ts < 30000) {
-      return res.json(_prevCache.data);
-    }
-
-    // 1) jogos pendentes (futuros) direto do snapshot
-    const alvoLigas = EA_LIGAS_P.filter(l => !liga || l.liga === liga);
-    const pendentes = [];
-    for (const item of alvoLigas) {
-      try {
-        const r = await fetch(`${EA_BASE_P}/snapshot?provider=bet365&sub=${item.sub}&_t=${Date.now()}`,
-          { headers: EA_HEADERS_P, signal: AbortSignal.timeout(12000) });
-        if (!r.ok) continue;
-        const data = await r.json();
-        if (!Array.isArray(data)) continue;
-        for (const jogo of data) {
-          if (jogo.status === 'finalizado') continue;
-          if (!jogo.date || !jogo.teamA || !jogo.teamB) continue;
-          const realUtcMs = new Date(jogo.date).getTime() - 3600000; // EA grava BST como se fosse UTC
-          if (realUtcMs < Date.now() - 5 * 60000) continue;
-          if (realUtcMs > Date.now() + Number(horas) * 3600000) continue;
-          pendentes.push({ liga: item.liga, jogo, realUtcMs });
-        }
-      } catch (e) { /* liga indisponível agora — segue as outras */ }
-      await new Promise(r2 => setTimeout(r2, 250));
-    }
-
-    // 2) para cada jogo futuro: histórico do confronto exato no banco
-    const previsoes = [];
-    for (const pend of pendentes) {
-      const { liga: lg, jogo, realUtcMs } = pend;
-      const dBST = new Date(realUtcMs + 3600000);
-      const minuto = dBST.getUTCMinutes();
-      const slots = EA_SLOTS_P[lg] || [];
-      let slotMin = slots.length ? slots[0] : minuto, md = 99;
-      for (const s of slots) { const d2 = Math.abs(s - minuto); if (d2 < md) { md = d2; slotMin = s; } }
-
-      const h = await db.query(`
-        SELECT ft_str, gols_total, is_btts, COUNT(*)::int AS vezes
-        FROM virturia_resultados_b365
-        WHERE liga = $1 AND team_a = $2 AND team_b = $3
-        GROUP BY ft_str, gols_total, is_btts
-        ORDER BY vezes DESC
-      `, [lg, jogo.teamA, jogo.teamB]);
-      const total = h.rows.reduce((a, r2) => a + r2.vezes, 0);
-      if (total < Number(min_amostra)) continue;
-
-      // distribuição por MERCADO (apostável) — confiança real
-      const mk = { '0-0': 0, 'OVER 1.5': 0, 'UNDER 1.5': 0, 'OVER 2.5': 0, 'UNDER 2.5': 0, 'OVER 3.5': 0, 'AMBAS SIM': 0 };
-      for (const r2 of h.rows) {
-        const g = r2.gols_total;
-        if (g === 0) mk['0-0'] += r2.vezes;
-        if (g >= 2) mk['OVER 1.5'] += r2.vezes; else mk['UNDER 1.5'] += r2.vezes;
-        if (g >= 3) mk['OVER 2.5'] += r2.vezes; else mk['UNDER 2.5'] += r2.vezes;
-        if (g >= 4) mk['OVER 3.5'] += r2.vezes;
-        if (r2.is_btts) mk['AMBAS SIM'] += r2.vezes;
-      }
-      let melhor = null;
-      for (const [m, v] of Object.entries(mk)) {
-        const pct = Math.round(v / total * 100);
-        if (!melhor || pct > melhor.pct) melhor = { m, v, pct };
-      }
-      if (!melhor) continue;
-
-      previsoes.push({
-        liga: lg,
-        event_id: `${jogo.teamA} x ${jogo.teamB}`,
-        team_a: jogo.teamA,
-        team_b: jogo.teamB,
-        slot: slotMin,
-        start_time: realUtcMs,
-        resultado_mais_frequente: melhor.m,
-        confianca: melhor.pct,
-        total,
-        vezes: melhor.v,
-        odds: jogo.odds || null,
-        historico: h.rows.slice(0, 4).map(r2 => ({ ft: r2.ft_str, vezes: r2.vezes, pct: Math.round(r2.vezes / total * 100) }))
-      });
-    }
-
-    previsoes.sort((a, b) => a.start_time - b.start_time || b.confianca - a.confianca);
-    const payload = { ok: true, total: previsoes.length, jogos_futuros: pendentes.length, previsoes };
-    _prevCache = { key: cacheKey, ts: Date.now(), data: payload };
-    res.json(payload);
-  } catch (e) { next(e); }
-});
+// 🔮 GET /api/virturia-b365/previsao — jogos futuros × histórico do confronto
+// (motor compartilhado com a Betano — ver lib/previsao.js)
+router.get('/previsao', require('../lib/previsao')(db, 'virturia_resultados_b365', {
+  provider: 'bet365',
+  ligas: [
+    { sub: 'express_cup',              liga: 'express_cup' },
+    { sub: 'copa_do_mundo',            liga: 'copa_mundo' },
+    { sub: 'euro_cup',                 liga: 'euro_cup' },
+    { sub: 'super_liga_sul-americana', liga: 'sul_americana' },
+    { sub: 'premiership',              liga: 'premier_league' },
+  ],
+  slots: {
+    express_cup:    Array.from({ length: 60 }, (_, i) => i),
+    copa_mundo:     [1,4,7,10,13,16,19,22,25,28,31,34,37,40,43,46,49,52,55,58],
+    euro_cup:       [2,5,8,11,14,17,20,23,26,29,32,35,38,41,44,47,50,53,56,59],
+    sul_americana:  [1,4,7,10,13,16,19,22,25,28,31,34,37,40,43,46,49,52,55,58],
+    premier_league: [0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,48,51,54,57],
+  },
+  slotsFallback: [0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,48,51,54,57],
+  toRealUtcMs: -3600000,   // EasyCo grava BST (UTC+1) rotulado como UTC
+  clockFromRealMs: 3600000 // relógio da Bet365 = UK
+}));
 
 module.exports = router;
