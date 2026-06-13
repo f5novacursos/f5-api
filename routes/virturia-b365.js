@@ -451,54 +451,157 @@ router.get('/previsao-proxima-hora', async (req, res, next) => {
 router.get('/historico-acertos', async (req, res, next) => {
   try {
     const { horas_atras = 4, min_confianca = 60 } = req.query;
-    const minConf = parseInt(min_confianca) || 60;
+    const minConf  = parseInt(min_confianca) || 60;
+    const minOcorr = 3;
     const horasAtras = parseInt(horas_atras) || 4;
+
+    // Função classificar (igual ao motor de previsão)
+    function classificar(r) {
+      const g = r.gols_total; const a = r.ft_a, b = r.ft_b;
+      let principal;
+      if (g === 0)       principal = '0-0';
+      else if (g >= 5)   principal = 'OVER 4.5';
+      else if (g >= 4)   principal = 'OVER 3.5';
+      else if (g >= 3)   principal = 'OVER 2.5';
+      else if (g >= 2)   principal = 'OVER 1.5';
+      else               principal = 'UNDER 1.5';
+      const atipico = g === 0 || g >= 5 || (a === b && g >= 2);
+      return { principal, atipico };
+    }
+
+    // Função que roda o motor de previsão para uma hora-alvo específica
+    // usando apenas dados ANTERIORES a essa hora (sem olhar o futuro)
+    async function gerarPrevisoesPara(horaAlvoBST, corteMs) {
+      // Busca só dados anteriores ao corte
+      const rHist = await db.query(`
+        SELECT liga, hora, slot_min, ft_str, ft_a, ft_b, gols_total,
+               is_btts, empate, start_time,
+               DATE(TO_TIMESTAMP(start_time/1000)) as dia
+        FROM virturia_resultados_b365
+        WHERE start_time < $1
+        ORDER BY liga, start_time ASC
+      `, [corteMs]);
+
+      if (rHist.rows.length < 20) return [];
+
+      const linhaMap = {};
+      for (const j of rHist.rows) {
+        const k = `${j.liga}|${j.dia}|${j.hora}`;
+        if (!linhaMap[k]) linhaMap[k] = { liga: j.liga, hora: j.hora, ts: Number(j.start_time), slots: [] };
+        linhaMap[k].slots.push({ ...j, ...classificar(j) });
+      }
+      const ligaLinhas = {};
+      for (const v of Object.values(linhaMap)) {
+        if (!ligaLinhas[v.liga]) ligaLinhas[v.liga] = [];
+        v.slots.sort((a, b) => a.slot_min - b.slot_min);
+        ligaLinhas[v.liga].push(v);
+      }
+      for (const l in ligaLinhas) ligaLinhas[l].sort((a, b) => a.ts - b.ts);
+
+      const padraoMap = {};
+      for (const [liga, linhas] of Object.entries(ligaLinhas)) {
+        const todosSlots = [...new Set(linhas.flatMap(l => l.slots.map(s => s.slot_min)))];
+        for (const slotMin of todosSlots) {
+          const seq = linhas.map(l => l.slots.find(s => s.slot_min === slotMin)).filter(Boolean);
+          if (seq.length < minOcorr + 1) continue;
+          for (let janela = 1; janela <= 3; janela++) {
+            const acc = {};
+            for (let i = 0; i <= seq.length - janela - 1; i++) {
+              const conds = seq.slice(i, i + janela);
+              const prox  = seq[i + janela];
+              const condKey = conds.map(c => c.principal).join(' -> ');
+              const temAtipico = conds.some(c => c.atipico);
+              if (!acc[condKey]) acc[condKey] = { total: 0, res: {}, atipico: temAtipico, janela };
+              acc[condKey].total++;
+              acc[condKey].res[prox.principal] = (acc[condKey].res[prox.principal] || 0) + 1;
+            }
+            for (const [condKey, v] of Object.entries(acc)) {
+              if (v.total < minOcorr) continue;
+              const melhor = Object.entries(v.res).sort((a,b) => b[1]-a[1])[0];
+              if (!melhor) continue;
+              const [resul, cnt] = melhor;
+              const conf = Math.round(cnt / v.total * 100);
+              if (conf < minConf) continue;
+              const chave = `${liga}|${slotMin}`;
+              if (!padraoMap[chave]) padraoMap[chave] = [];
+              padraoMap[chave].push({ liga, slot_min: slotMin, resultado: resul, confianca: conf, ocorrencias: v.total, atipico: v.atipico, janela: v.janela });
+            }
+          }
+        }
+      }
+
+      const previsoes = [];
+      for (const [, candidatos] of Object.entries(padraoMap)) {
+        candidatos.sort((a, b) => (a.atipico !== b.atipico ? b.atipico - a.atipico : b.confianca !== a.confianca ? b.confianca - a.confianca : b.janela - a.janela));
+        previsoes.push(candidatos[0]);
+      }
+      return previsoes;
+    }
+
+    // Função que verifica se resultado bate com previsão
+    function bateu(previsto, gols, is_btts) {
+      if (previsto === '0-0')      return gols === 0;
+      if (previsto === 'OVER 1.5') return gols >= 2;
+      if (previsto === 'UNDER 1.5') return gols <= 1;
+      if (previsto === 'OVER 2.5') return gols >= 3;
+      if (previsto === 'UNDER 2.5') return gols <= 2;
+      if (previsto === 'OVER 3.5') return gols >= 4;
+      if (previsto === 'OVER 4.5') return gols >= 5;
+      if (previsto === 'AMBAS SIM') return is_btts;
+      return false;
+    }
 
     const agoraBST = new Date(Date.now() + 3600000);
     const horaBSTAtual = agoraBST.getUTCHours();
-
     const horas = [];
+
     for (let i = horasAtras; i >= 1; i--) {
-      const horaBST = (horaBSTAtual - i + 24) % 24;
       const inicioBST = new Date(Date.now() + 3600000 - i * 3600000);
       inicioBST.setUTCMinutes(0, 0, 0);
-      const fimBST = new Date(inicioBST.getTime() + 3600000);
-      const inicioMs = inicioBST.getTime() - 3600000; // volta pra UTC real
-      const fimMs = fimBST.getTime() - 3600000;
-      const dataBST = inicioBST.toISOString().slice(0, 10);
+      const fimBST    = new Date(inicioBST.getTime() + 3600000);
+      const horaBST   = inicioBST.getUTCHours();
+      const dataBST   = inicioBST.toISOString().slice(0, 10);
+      const inicioMs  = inicioBST.getTime() - 3600000; // UTC real
+      const fimMs     = fimBST.getTime() - 3600000;
 
-      // Busca previsoes para essa hora usando o motor
-      const rHist = await db.query(
-        `SELECT liga, hora, slot_min, ft_str, ft_a, ft_b, gols_total, is_btts, start_time
-         FROM virturia_resultados_b365
-         WHERE start_time >= $1 AND start_time < $2
-         ORDER BY slot_min ASC`,
-        [inicioMs, fimMs]
-      );
+      // Gera previsões usando só dados anteriores ao início dessa hora
+      const previsoes = await gerarPrevisoesPara(horaBST, inicioMs);
+      const prevMap   = {}; // liga|slot_min → previsao
+      for (const p of previsoes) prevMap[`${p.liga}|${p.slot_min}`] = p;
 
-      const entradas = rHist.rows.map(r => {
-        const g = r.gols_total;
-        let resultado;
-        if (g === 0) resultado = '0-0';
-        else if (g >= 5) resultado = 'OVER 4.5';
-        else if (g >= 4) resultado = 'OVER 3.5';
-        else if (g >= 3) resultado = 'OVER 2.5';
-        else if (g >= 2) resultado = 'OVER 1.5';
-        else resultado = 'UNDER 1.5';
-        return {
-          liga: r.liga, slot_min: r.slot_min,
-          previsto: resultado, ft_real: r.ft_str, gols_real: g,
-          confianca: 0, ocorrencias: 0, status: 'green'
-        };
-      });
+      // Busca resultados reais que saíram nessa hora
+      const rReal = await db.query(`
+        SELECT liga, slot_min, ft_str, ft_a, ft_b, gols_total, is_btts, start_time
+        FROM virturia_resultados_b365
+        WHERE start_time >= $1 AND start_time < $2
+        ORDER BY liga, slot_min ASC
+      `, [inicioMs, fimMs]);
+
+      const entradas = [];
+      for (const r of rReal.rows) {
+        const chave = `${r.liga}|${r.slot_min}`;
+        const prev  = prevMap[chave];
+        if (!prev) continue; // sem previsão para esse slot, ignora
+        const acertou = bateu(prev.resultado, r.gols_total, r.is_btts);
+        entradas.push({
+          liga: r.liga,
+          slot_min: r.slot_min,
+          previsto: prev.resultado,
+          confianca: prev.confianca,
+          ocorrencias: prev.ocorrencias,
+          ft_real: r.ft_str,
+          gols_real: r.gols_total,
+          status: acertou ? 'green' : 'red',
+        });
+      }
 
       const greens = entradas.filter(e => e.status === 'green').length;
-      const reds = entradas.filter(e => e.status === 'red').length;
-      const total = greens + reds;
+      const reds   = entradas.filter(e => e.status === 'red').length;
+      const total  = greens + reds;
       horas.push({
         hora_bst: horaBST, data_bst: dataBST,
-        resumo: { greens, reds, total, pct: total > 0 ? Math.round(greens/total*100) : null },
-        entradas
+        resumo: { greens, reds, total, pct: total > 0 ? Math.round(greens / total * 100) : null },
+        entradas,
       });
     }
 
