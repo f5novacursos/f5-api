@@ -280,4 +280,171 @@ router.get('/previsao', require('../lib/previsao')(db, 'virturia_resultados_b365
   clockFromRealMs: 3600000 // relógio da Bet365 = UK
 }));
 
+// ════════════════════════════════════════════════════════════════
+// 🧠 GET /api/virturia-b365/previsao-proxima-hora
+// Motor dinâmico — analisa TODO o histórico disponível,
+// encontra QUALQUER padrão que se repete (não só torre),
+// prioriza atípicos (0-0, 5+ gols, espelhos) como gatilhos.
+// Retorna previsões para a próxima hora baseadas no contexto atual.
+// ════════════════════════════════════════════════════════════════
+router.get('/previsao-proxima-hora', async (req, res, next) => {
+  try {
+    const { min_confianca = 60, min_ocorrencias = 3 } = req.query;
+    const minConf  = parseInt(min_confianca) || 60;
+    const minOcorr = parseInt(min_ocorrencias) || 3;
+
+    // Hora BST atual
+    const agoraBST   = new Date(Date.now() + 3600000);
+    const horaBST    = agoraBST.getUTCHours();
+    const proxHoraBST = (horaBST + 1) % 24;
+
+    // ── 1. Busca TODO o histórico disponível ──
+    const rHist = await db.query(`
+      SELECT liga, hora, slot_min, ft_str, ft_a, ft_b, gols_total,
+             is_btts, empate, start_time,
+             DATE(TO_TIMESTAMP(start_time/1000)) as dia
+      FROM virturia_resultados_b365
+      ORDER BY liga, start_time ASC
+    `);
+
+    if (rHist.rows.length < 20) {
+      return res.json({ ok: true, total: 0, hora_bst: proxHoraBST, previsoes: [] });
+    }
+
+    // ── 2. Classifica cada resultado ──
+    function classificar(r) {
+      const g = r.gols_total;
+      const a = r.ft_a, b = r.ft_b;
+      const tags = [];
+      if (g === 0)  tags.push('0-0');
+      if (g >= 2)   tags.push('OVER 1.5'); else tags.push('UNDER 1.5');
+      if (g >= 3)   tags.push('OVER 2.5'); else tags.push('UNDER 2.5');
+      if (g >= 4)   tags.push('OVER 3.5');
+      if (g >= 5)   tags.push('OVER 4.5');  // atípico
+      if (r.is_btts) tags.push('AMBAS SIM');
+      // Tag principal única (mais específica)
+      let principal;
+      if (g === 0)       principal = '0-0';
+      else if (g >= 5)   principal = 'OVER 4.5';
+      else if (g >= 4)   principal = 'OVER 3.5';
+      else if (g >= 3)   principal = 'OVER 2.5';
+      else if (g >= 2)   principal = 'OVER 1.5';
+      else               principal = 'UNDER 1.5';
+
+      // Atípico = 0-0, 5+ gols, ou placar espelho (2-2, 3-3, 1-1 com gols)
+      const atipico = g === 0 || g >= 5 || (a === b && g >= 2);
+      return { principal, tags, atipico, ft: r.ft_str };
+    }
+
+    // ── 3. Organiza por liga → lista de linhas (hora × slots) ──
+    const linhaMap = {};
+    for (const j of rHist.rows) {
+      const k = `${j.liga}|${j.dia}|${j.hora}`;
+      if (!linhaMap[k]) linhaMap[k] = { liga: j.liga, hora: j.hora, ts: Number(j.start_time), slots: [] };
+      linhaMap[k].slots.push({ ...j, ...classificar(j) });
+    }
+    const ligaLinhas = {};
+    for (const v of Object.values(linhaMap)) {
+      if (!ligaLinhas[v.liga]) ligaLinhas[v.liga] = [];
+      v.slots.sort((a, b) => a.slot_min - b.slot_min);
+      ligaLinhas[v.liga].push(v);
+    }
+    for (const l in ligaLinhas) ligaLinhas[l].sort((a, b) => a.ts - b.ts);
+
+    // ── 4. Motor de padrões — encontra QUALQUER combinação ──
+    // Para cada liga × slot: analisa todas as janelas de N linhas consecutivas
+    // e vê o que aparece depois. Sem restrição de tipo de padrão.
+    const padraoMap = {}; // chave: liga|slot_min → array de candidatos
+
+    for (const [liga, linhas] of Object.entries(ligaLinhas)) {
+      const todosSlots = [...new Set(linhas.flatMap(l => l.slots.map(s => s.slot_min)))];
+
+      for (const slotMin of todosSlots) {
+        // Sequência temporal desse slot nessa liga
+        const seq = linhas
+          .map(l => l.slots.find(s => s.slot_min === slotMin))
+          .filter(Boolean);
+        if (seq.length < minOcorr + 1) continue;
+
+        // Analisa janelas de tamanho 1, 2 e 3 como condição → próximo
+        for (let janela = 1; janela <= 3; janela++) {
+          const acc = {}; // condKey → { total, res:{tag:count}, atipico_cond }
+          for (let i = 0; i <= seq.length - janela - 1; i++) {
+            const conds = seq.slice(i, i + janela);
+            const prox  = seq[i + janela];
+            // Chave da condição = sequência de tags principais
+            const condKey = conds.map(c => c.principal).join(' → ');
+            const temAtipico = conds.some(c => c.atipico);
+            if (!acc[condKey]) acc[condKey] = { total: 0, res: {}, atipico: temAtipico, janela };
+            acc[condKey].total++;
+            acc[condKey].res[prox.principal] = (acc[condKey].res[prox.principal] || 0) + 1;
+            if (temAtipico) acc[condKey].atipico = true;
+          }
+
+          for (const [condKey, v] of Object.entries(acc)) {
+            if (v.total < minOcorr) continue;
+            const melhor = Object.entries(v.res).sort((a,b) => b[1]-a[1])[0];
+            if (!melhor) continue;
+            const [res, cnt] = melhor;
+            const conf = Math.round(cnt / v.total * 100);
+            if (conf < minConf) continue;
+
+            const chave = `${liga}|${slotMin}`;
+            if (!padraoMap[chave]) padraoMap[chave] = [];
+            padraoMap[chave].push({
+              liga, slot_min: slotMin,
+              condicao: condKey,
+              resultado: res,
+              confianca: conf,
+              ocorrencias: v.total,
+              acertos: cnt,
+              atipico: v.atipico,
+              janela: v.janela,
+            });
+          }
+        }
+      }
+    }
+
+    // ── 5. Para cada slot, pega o MELHOR padrão ──
+    // Prioridade: atípico > confiança > janela maior
+    const previsoes = [];
+    for (const [chave, candidatos] of Object.entries(padraoMap)) {
+      candidatos.sort((a, b) => {
+        if (a.atipico !== b.atipico) return b.atipico - a.atipico;
+        if (b.confianca !== a.confianca) return b.confianca - a.confianca;
+        return b.janela - a.janela;
+      });
+      const melhor = candidatos[0];
+      previsoes.push({
+        ...melhor,
+        hora_alvo_bst: proxHoraBST,
+        // Contexto: últimas N ocorrências da condição nesse slot
+        historico_recente: (() => {
+          const [liga2, slot2] = chave.split('|');
+          const seqSlot = (ligaLinhas[liga2]||[])
+            .map(l => (l.slots||[]).find(s => s.slot_min === parseInt(slot2)))
+            .filter(Boolean).slice(-5);
+          return seqSlot.map(s => ({ ft: s.ft, gols: s.gols_total, atipico: s.atipico }));
+        })(),
+      });
+    }
+
+    // Ordena: atípicos primeiro, depois por confiança
+    previsoes.sort((a, b) => {
+      if (a.atipico !== b.atipico) return b.atipico - a.atipico;
+      return b.confianca - a.confianca;
+    });
+
+    res.json({
+      ok: true,
+      hora_bst: proxHoraBST,
+      hora_bst_atual: horaBST,
+      total: previsoes.length,
+      total_atipicos: previsoes.filter(p => p.atipico).length,
+      previsoes,
+    });
+  } catch(e) { next(e); }
+});
+
 module.exports = router;
