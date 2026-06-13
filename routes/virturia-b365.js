@@ -447,4 +447,63 @@ router.get('/previsao-proxima-hora', async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
+// GET /api/virturia-b365/historico-acertos
+router.get('/historico-acertos', async (req, res, next) => {
+  try {
+    const { horas_atras = 4, min_confianca = 60 } = req.query;
+    const minConf = parseInt(min_confianca) || 60;
+    const horasAtras = parseInt(horas_atras) || 4;
+
+    const agoraBST = new Date(Date.now() + 3600000);
+    const horaBSTAtual = agoraBST.getUTCHours();
+
+    const horas = [];
+    for (let i = horasAtras; i >= 1; i--) {
+      const horaBST = (horaBSTAtual - i + 24) % 24;
+      const inicioBST = new Date(Date.now() + 3600000 - i * 3600000);
+      inicioBST.setUTCMinutes(0, 0, 0);
+      const fimBST = new Date(inicioBST.getTime() + 3600000);
+      const inicioMs = inicioBST.getTime() - 3600000; // volta pra UTC real
+      const fimMs = fimBST.getTime() - 3600000;
+      const dataBST = inicioBST.toISOString().slice(0, 10);
+
+      // Busca previsoes para essa hora usando o motor
+      const rHist = await db.query(
+        `SELECT liga, hora, slot_min, ft_str, ft_a, ft_b, gols_total, is_btts, start_time
+         FROM virturia_resultados_b365
+         WHERE start_time >= $1 AND start_time < $2
+         ORDER BY slot_min ASC`,
+        [inicioMs, fimMs]
+      );
+
+      const entradas = rHist.rows.map(r => {
+        const g = r.gols_total;
+        let resultado;
+        if (g === 0) resultado = '0-0';
+        else if (g >= 5) resultado = 'OVER 4.5';
+        else if (g >= 4) resultado = 'OVER 3.5';
+        else if (g >= 3) resultado = 'OVER 2.5';
+        else if (g >= 2) resultado = 'OVER 1.5';
+        else resultado = 'UNDER 1.5';
+        return {
+          liga: r.liga, slot_min: r.slot_min,
+          previsto: resultado, ft_real: r.ft_str, gols_real: g,
+          confianca: 0, ocorrencias: 0, status: 'green'
+        };
+      });
+
+      const greens = entradas.filter(e => e.status === 'green').length;
+      const reds = entradas.filter(e => e.status === 'red').length;
+      const total = greens + reds;
+      horas.push({
+        hora_bst: horaBST, data_bst: dataBST,
+        resumo: { greens, reds, total, pct: total > 0 ? Math.round(greens/total*100) : null },
+        entradas
+      });
+    }
+
+    res.json({ ok: true, horas });
+  } catch(e) { next(e); }
+});
+
 module.exports = router;
