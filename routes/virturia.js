@@ -431,4 +431,21 @@ router.get('/trigger', async (req, res) => {
   }
 });
 
+// GET /api/virturia/betano-fetch?leagueId=204676&last=20
+// Proxy: Worker chama esta rota → VPS busca na Betano → devolve JSON
+// Resolve o bloqueio 403 da Betano contra IPs de datacenter Cloudflare
+router.get(`/betano-fetch`, async (req, res) => {
+  try {
+    const { leagueId, last = 20 } = req.query;
+    if (!leagueId) return res.status(400).json({ ok: false, error: `leagueId obrigatorio` });
+    const url = `https://betano.bet.br/api/virtuals/resultsdata/?leagueId=${leagueId}&last=${last}&_t=${Date.now()}`;
+    const r = await fetch(url, { headers: HDR });
+    if (!r.ok) return res.status(r.status).json({ ok: false, error: `Betano HTTP ${r.status}` });
+    const data = await r.json();
+    res.json(data);
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;
