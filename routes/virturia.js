@@ -365,6 +365,16 @@ router.get('/padroes-auto', async (req, res, next) => {
 // Minerador compartilhado (8 geometrias × 3 leituras) — ver lib/padroes-live.js
 router.get('/padroes-live', require('../lib/padroes-live')(db, 'virturia_resultados'));
 
+// GET /api/virturia/padroes-confronto — previsão por teamA × teamB × slot
+router.get('/padroes-confronto', require('../lib/padroes-confronto')(db, 'virturia_resultados', [
+  { sub: 'brasileirao-betano',   liga: 'brasileirao',   provider: 'betano' },
+  { sub: 'copa-america',         liga: 'copa_america',  provider: 'betano' },
+  { sub: 'euro',                 liga: 'euro',          provider: 'betano' },
+  { sub: 'italiano',             liga: 'italiano',      provider: 'betano' },
+  { sub: 'classicos-da-america', liga: 'classicos',     provider: 'betano' },
+  { sub: 'copa-das-estrelas',    liga: 'copa_estrelas', provider: 'betano' },
+]));
+
 // 🔮 GET /api/virturia/previsao — jogos futuros × histórico do confronto
 // (motor compartilhado com a Bet365 — ver lib/previsao.js)
 router.get('/previsao', require('../lib/previsao')(db, 'virturia_resultados', {
