@@ -420,6 +420,20 @@ router.get('/coletar', async (req, res) => {
   }
 });
 
+// POST /api/virturia/limpar — limpa registros por data (requer chave)
+router.post('/limpar', async (req, res, next) => {
+  try {
+    const { chave, data } = req.body;
+    if (chave !== 'virturia2026secret') return res.status(403).json({ ok: false, error: 'chave invalida' });
+    if (!data) return res.status(400).json({ ok: false, error: 'data obrigatoria (ex: 2026-06-15)' });
+    const r = await db.query(
+      `DELETE FROM virturia_resultados WHERE coletado_em >= $1::date AND coletado_em < ($1::date + interval '1 day')`,
+      [data]
+    );
+    res.json({ ok: true, deletados: r.rowCount, data });
+  } catch(e) { next(e); }
+});
+
 // Trigger legado (mantido para compatibilidade)
 router.get('/trigger', async (req, res) => {
   try {
