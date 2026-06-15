@@ -257,6 +257,15 @@ router.post('/limpar', async (req, res, next) => {
 // GET /api/virturia-b365/padroes-live — minerador 8 geometrias (mesmo motor da Betano)
 router.get('/padroes-live', require('../lib/padroes-live')(db, 'virturia_resultados_b365'));
 
+// GET /api/virturia-b365/padroes-confronto — previsão por teamA × teamB × slot
+router.get('/padroes-confronto', require('../lib/padroes-confronto')(db, 'virturia_resultados_b365', [
+  { sub: 'express_cup',               liga: 'express_cup',    provider: 'bet365' },
+  { sub: 'copa_do_mundo',             liga: 'copa_mundo',     provider: 'bet365' },
+  { sub: 'euro_cup',                  liga: 'euro_cup',       provider: 'bet365' },
+  { sub: 'super_liga_sul-americana',  liga: 'sul_americana',  provider: 'bet365' },
+  { sub: 'premiership',               liga: 'premier_league', provider: 'bet365' },
+]));
+
 // 🔮 GET /api/virturia-b365/previsao — jogos futuros × histórico do confronto
 // (motor compartilhado com a Betano — ver lib/previsao.js)
 router.get('/previsao', require('../lib/previsao')(db, 'virturia_resultados_b365', {
