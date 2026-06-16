@@ -228,7 +228,7 @@ router.get('/padroes-auto', async (req, res, next) => {
     const ligaFilter = liga ? `AND liga = $2` : '';
 
     const r = await db.query(`
-      SELECT liga, hora, slot_min, ft_str, gols_total, is_btts,
+      SELECT liga, hora, slot_min, ft_str, ht_str, gols_total, is_btts,
              casa_ganha, visit_ganha, empate, start_time,
              DATE(TO_TIMESTAMP(start_time/1000) AT TIME ZONE 'America/Sao_Paulo') as dia
       FROM virturia_resultados
@@ -352,11 +352,156 @@ router.get('/padroes-auto', async (req, res, next) => {
       }
     }
 
+    // PADRÃO VERTICAL CATEGORIA: tagPrincipal(hora N) → tagPrincipal(hora N+1)
+    // Agrupa por OVER/UNDER em vez de placar exato → mais amostras, padrões macro
+    for (const [ligaKey, linhas] of Object.entries(ligaLinhas)) {
+      const todosSlots = [...new Set(linhas.flatMap(l => l.slots.map(s => s.slot_min)))];
+      for (const slotMin of todosSlots) {
+        const seq = linhas.map(l => l.slots.find(s => s.slot_min === slotMin)).filter(Boolean);
+        if (seq.length < minOcorr + 1) continue;
+        const acc = {};
+        for (let i = 0; i < seq.length - 1; i++) {
+          const cond = tagPrincipal(seq[i]);
+          const prox = tagPrincipal(seq[i + 1]);
+          if (!acc[cond]) acc[cond] = { total: 0, res: {} };
+          acc[cond].total++;
+          acc[cond].res[prox] = (acc[cond].res[prox] || 0) + 1;
+        }
+        for (const [cond, v] of Object.entries(acc)) {
+          if (v.total < minOcorr) continue;
+          const melhor = Object.entries(v.res).sort((a,b) => b[1]-a[1])[0];
+          if (!melhor) continue;
+          const [res, cnt] = melhor;
+          const conf = Math.round(cnt / v.total * 100);
+          if (conf < minConf) continue;
+          const baseV = baseRate(ligaKey, res);
+          const edge = conf - baseV;
+          if (edge < 5) continue; // só padrões com edge real
+          padroes.push({
+            id: `vc_${ligaKey}_${slotMin}_${cond}_${res}`.replace(/\W/g,'_'),
+            tipo: 'vertical-cat', liga: ligaKey, slot_min: slotMin,
+            condicao: [cond], resultado: res,
+            ocorrencias: v.total, acertos: cnt, confianca: conf,
+            base_rate: baseV, edge,
+            descricao: `Slot ${slotMin}': saiu ${cond} → próxima hora: ${res}`
+          });
+        }
+      }
+    }
+
+    // PADRÃO HT → FT: intervalo do jogo prediz resultado final
+    // "Quando HT é 0-0 neste slot → FT tende a ser UNDER 1.5 com X%"
+    for (const [ligaKey, linhas] of Object.entries(ligaLinhas)) {
+      const todosSlots = [...new Set(linhas.flatMap(l => l.slots.map(s => s.slot_min)))];
+      for (const slotMin of todosSlots) {
+        const jogos = linhas.flatMap(l => l.slots.filter(s => s.slot_min === slotMin && s.ht_str));
+        if (jogos.length < minOcorr) continue;
+        const acc = {};
+        for (const j of jogos) {
+          const cond = j.ht_str;
+          const res  = tagPrincipal(j);
+          if (!acc[cond]) acc[cond] = { total: 0, res: {} };
+          acc[cond].total++;
+          acc[cond].res[res] = (acc[cond].res[res] || 0) + 1;
+        }
+        for (const [cond, v] of Object.entries(acc)) {
+          if (v.total < minOcorr) continue;
+          const melhor = Object.entries(v.res).sort((a,b) => b[1]-a[1])[0];
+          if (!melhor) continue;
+          const [res, cnt] = melhor;
+          const conf = Math.round(cnt / v.total * 100);
+          if (conf < minConf) continue;
+          const baseV = baseRate(ligaKey, res);
+          const edge = conf - baseV;
+          if (edge < 5) continue;
+          padroes.push({
+            id: `ht_${ligaKey}_${slotMin}_${cond}_${res}`.replace(/\W/g,'_'),
+            tipo: 'ht-ft', liga: ligaKey, slot_min: slotMin,
+            condicao: [cond], resultado: res,
+            ocorrencias: v.total, acertos: cnt, confianca: conf,
+            base_rate: baseV, edge,
+            descricao: `Slot ${slotMin}': HT ${cond} → FT ${res}`
+          });
+        }
+      }
+    }
+
+    // PADRÃO VERTICAL 2 HORAS: [hora N-1, hora N] → hora N+1
+    // Detecta oscilação: OVER → UNDER → OVER, repetições em blocos, etc.
+    for (const [ligaKey, linhas] of Object.entries(ligaLinhas)) {
+      const todosSlots = [...new Set(linhas.flatMap(l => l.slots.map(s => s.slot_min)))];
+      for (const slotMin of todosSlots) {
+        const seq = linhas.map(l => l.slots.find(s => s.slot_min === slotMin)).filter(Boolean);
+        if (seq.length < minOcorr + 2) continue;
+        const acc = {};
+        for (let i = 0; i < seq.length - 2; i++) {
+          const cond = `${tagPrincipal(seq[i])} → ${tagPrincipal(seq[i+1])}`;
+          const prox = tagPrincipal(seq[i+2]);
+          if (!acc[cond]) acc[cond] = { total: 0, res: {} };
+          acc[cond].total++;
+          acc[cond].res[prox] = (acc[cond].res[prox] || 0) + 1;
+        }
+        for (const [cond, v] of Object.entries(acc)) {
+          if (v.total < minOcorr) continue;
+          const melhor = Object.entries(v.res).sort((a,b) => b[1]-a[1])[0];
+          if (!melhor) continue;
+          const [res, cnt] = melhor;
+          const conf = Math.round(cnt / v.total * 100);
+          if (conf < minConf) continue;
+          const baseV = baseRate(ligaKey, res);
+          const edge = conf - baseV;
+          if (edge < 8) continue; // exige edge maior pois condição é mais específica
+          padroes.push({
+            id: `v2_${ligaKey}_${slotMin}_${cond}_${res}`.replace(/\W/g,'_'),
+            tipo: 'vertical-2h', liga: ligaKey, slot_min: slotMin,
+            condicao: cond.split(' → '), resultado: res,
+            ocorrencias: v.total, acertos: cnt, confianca: conf,
+            base_rate: baseV, edge,
+            descricao: `Slot ${slotMin}': ${cond} → próxima hora: ${res}`
+          });
+        }
+      }
+    }
+
+    // PADRÃO HORIZONTAL CATEGORIA: tagPrincipal(slot[i]) → tagPrincipal(slot[i+1]) na mesma hora
+    for (const [ligaKey, linhas] of Object.entries(ligaLinhas)) {
+      const acc = {};
+      for (const linha of linhas) {
+        const slots = linha.slots;
+        for (let i = 0; i < slots.length - 1; i++) {
+          const cond = tagPrincipal(slots[i]);
+          const prox = tagPrincipal(slots[i + 1]);
+          if (!acc[cond]) acc[cond] = { total: 0, res: {} };
+          acc[cond].total++;
+          acc[cond].res[prox] = (acc[cond].res[prox] || 0) + 1;
+        }
+      }
+      for (const [cond, v] of Object.entries(acc)) {
+        if (v.total < minOcorr) continue;
+        const melhor = Object.entries(v.res).sort((a,b) => b[1]-a[1])[0];
+        if (!melhor) continue;
+        const [res, cnt] = melhor;
+        const conf = Math.round(cnt / v.total * 100);
+        if (conf < minConf) continue;
+        const baseH = baseRate(ligaKey, res);
+        const edge = conf - baseH;
+        if (edge < 5) continue;
+        padroes.push({
+          id: `hc_${ligaKey}_${cond}_${res}`.replace(/\W/g,'_'),
+          tipo: 'horizontal-cat', liga: ligaKey, slot_min: null,
+          condicao: [cond], resultado: res,
+          ocorrencias: v.total, acertos: cnt, confianca: conf,
+          base_rate: baseH, edge,
+          descricao: `Mesma hora: depois de ${cond} → próximo slot: ${res}`
+        });
+      }
+    }
+
     const vistos = new Set();
     const final = padroes
       .filter(p => { if (vistos.has(p.id)) return false; vistos.add(p.id); return true; })
       .sort((a, b) => (b.edge - a.edge) || (b.confianca - a.confianca) || (b.ocorrencias - a.ocorrencias))
-      .slice(0, 100);
+      .slice(0, 150);
 
     res.json({ ok: true, total: final.length, horas: Number(horas), padroes: final });
   } catch(e) { next(e); }
