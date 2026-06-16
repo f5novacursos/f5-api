@@ -142,7 +142,7 @@ router.get('/padroes-auto', async (req, res, next) => {
     const ligaFilter = liga ? `AND liga = $2` : '';
 
     const r = await db.query(`
-      SELECT liga, hora, slot_min, ft_str, ht_str, gols_total, is_btts,
+      SELECT liga, hora, slot_min, ft_str, ht_str, ft_a, ft_b, ht_a, ht_b, gols_total, is_btts,
              casa_ganha, visit_ganha, empate, start_time,
              DATE(TO_TIMESTAMP(start_time/1000) AT TIME ZONE 'America/Sao_Paulo') as dia
       FROM virturia_resultados_b365
@@ -333,6 +333,94 @@ router.get('/padroes-auto', async (req, res, next) => {
           const edge = conf - baseV;
           if (edge < 8) continue;
           padroes.push({ id: `v2_${ligaKey}_${slotMin}_${cond}_${res}`.replace(/\W/g,'_'), tipo: 'vertical-2h', liga: ligaKey, slot_min: slotMin, condicao: cond.split(' → '), resultado: res, ocorrencias: v.total, acertos: cnt, confianca: conf, base_rate: baseV, edge, descricao: `Slot ${slotMin}': ${cond} → próxima hora: ${res}` });
+        }
+      }
+    }
+
+    // PADRÃO ATÍPICO VERTICAL: 0-0, 5+ gols, virada, HT 3+ → próxima hora
+    function labelAtipico(j) {
+      const g = j.gols_total;
+      const htA = parseInt(j.ht_a)||0, htB = parseInt(j.ht_b)||0;
+      const ftA = parseInt(j.ft_a)||0, ftB = parseInt(j.ft_b)||0;
+      if (g === 0) return '0-0 ⚫';
+      if (g >= 5)  return '5+ GOLS 🔥';
+      if (htA < htB && ftA > ftB) return 'VIRADA CASA 🔄';
+      if (htA > htB && ftA < ftB) return 'VIRADA VISIT 🔄';
+      if (htA + htB >= 3) return `HT ALTO ${j.ht_str}`;
+      if (g >= 4 && (ftA >= 3 || ftB >= 3)) return `PLACAR ${j.ft_str}`;
+      return null;
+    }
+
+    for (const [ligaKey, linhas] of Object.entries(ligaLinhas)) {
+      const todosSlots = [...new Set(linhas.flatMap(l => l.slots.map(s => s.slot_min)))];
+      for (const slotMin of todosSlots) {
+        const seq = linhas.map(l => l.slots.find(s => s.slot_min === slotMin)).filter(Boolean);
+        if (seq.length < minOcorr + 1) continue;
+        const acc = {};
+        for (let i = 0; i < seq.length - 1; i++) {
+          const label = labelAtipico(seq[i]);
+          if (!label) continue;
+          const prox = tagPrincipal(seq[i + 1]);
+          if (!acc[label]) acc[label] = { total: 0, res: {} };
+          acc[label].total++;
+          acc[label].res[prox] = (acc[label].res[prox] || 0) + 1;
+        }
+        for (const [cond, v] of Object.entries(acc)) {
+          if (v.total < Math.max(3, Math.floor(minOcorr / 2))) continue;
+          const melhor = Object.entries(v.res).sort((a,b) => b[1]-a[1])[0];
+          if (!melhor) continue;
+          const [res, cnt] = melhor;
+          const conf = Math.round(cnt / v.total * 100);
+          if (conf < minConf) continue;
+          const baseV = baseRate(ligaKey, res);
+          const edge = conf - baseV;
+          if (edge < 5) continue;
+          padroes.push({
+            id: `at_${ligaKey}_${slotMin}_${cond}_${res}`.replace(/\W/g,'_'),
+            tipo: 'atipico', liga: ligaKey, slot_min: slotMin,
+            condicao: [cond], resultado: res,
+            ocorrencias: v.total, acertos: cnt, confianca: conf,
+            base_rate: baseV, edge,
+            descricao: `Slot ${slotMin}': após ${cond} → próxima hora: ${res}`
+          });
+        }
+      }
+    }
+
+    // PADRÃO HT ATÍPICO → FT: HT com 3+ gols prediz resultado final
+    for (const [ligaKey, linhas] of Object.entries(ligaLinhas)) {
+      const todosSlots = [...new Set(linhas.flatMap(l => l.slots.map(s => s.slot_min)))];
+      for (const slotMin of todosSlots) {
+        const jogos = linhas.flatMap(l => l.slots.filter(s => s.slot_min === slotMin));
+        if (jogos.length < minOcorr) continue;
+        const acc = {};
+        for (const j of jogos) {
+          const htA = parseInt(j.ht_a)||0, htB = parseInt(j.ht_b)||0;
+          if (htA + htB < 3) continue;
+          const cond = `HT ${j.ht_str}`;
+          const res  = tagPrincipal(j);
+          if (!acc[cond]) acc[cond] = { total: 0, res: {} };
+          acc[cond].total++;
+          acc[cond].res[res] = (acc[cond].res[res] || 0) + 1;
+        }
+        for (const [cond, v] of Object.entries(acc)) {
+          if (v.total < 3) continue;
+          const melhor = Object.entries(v.res).sort((a,b) => b[1]-a[1])[0];
+          if (!melhor) continue;
+          const [res, cnt] = melhor;
+          const conf = Math.round(cnt / v.total * 100);
+          if (conf < minConf) continue;
+          const baseV = baseRate(ligaKey, res);
+          const edge = conf - baseV;
+          if (edge < 5) continue;
+          padroes.push({
+            id: `htat_${ligaKey}_${slotMin}_${cond}_${res}`.replace(/\W/g,'_'),
+            tipo: 'ht-atipico', liga: ligaKey, slot_min: slotMin,
+            condicao: [cond], resultado: res,
+            ocorrencias: v.total, acertos: cnt, confianca: conf,
+            base_rate: baseV, edge,
+            descricao: `Slot ${slotMin}': ${cond} (3+ gols HT) → FT ${res}`
+          });
         }
       }
     }
