@@ -83,7 +83,9 @@ router.post('/salvar', async (req, res, next) => {
             ft_a=EXCLUDED.ft_a, ft_b=EXCLUDED.ft_b, ht_a=EXCLUDED.ht_a, ht_b=EXCLUDED.ht_b,
             ft_str=EXCLUDED.ft_str, ht_str=EXCLUDED.ht_str, gols_total=EXCLUDED.gols_total,
             is_btts=EXCLUDED.is_btts, casa_ganha=EXCLUDED.casa_ganha, visit_ganha=EXCLUDED.visit_ganha,
-            empate=EXCLUDED.empate, start_time=EXCLUDED.start_time
+            empate=EXCLUDED.empate, start_time=EXCLUDED.start_time,
+            team_a=COALESCE(EXCLUDED.team_a, virturia_resultados_b365.team_a),
+            team_b=COALESCE(EXCLUDED.team_b, virturia_resultados_b365.team_b)
         `, [eventId,r.liga,hora,slotIdx,slotMin,r.teamA,r.teamB,ftA,ftB,htA,htB,
             `${ftA}-${ftB}`,htA!=null?`${htA}-${htB}`:null,ftA+ftB,ftA>0&&ftB>0,ftA>ftB,ftB>ftA,ftA===ftB,
             htA!=null?(htA+htB>=3):false, r.startTime]);
@@ -104,6 +106,7 @@ router.get('/resultados', async (req, res, next) => {
     if (liga) { ligaFilter = 'AND liga = $2'; params.push(liga); }
     const r = await db.query(`
       SELECT event_id AS id, liga,
+        slot_min,
         team_a AS "teamA", team_b AS "teamB",
         ft_a::text AS "scoreA", ft_b::text AS "scoreB",
         ht_a::text AS "htA", ht_b::text AS "htB",

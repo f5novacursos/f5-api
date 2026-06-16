@@ -188,6 +188,7 @@ router.get('/resultados', async (req, res, next) => {
       SELECT
         event_id  AS id,
         liga,
+        slot_min,
         team_a    AS "teamA",
         team_b    AS "teamB",
         ft_a::text AS "scoreA",
