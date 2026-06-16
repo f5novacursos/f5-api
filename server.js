@@ -33,6 +33,7 @@ app.use('/api/virturia', (req, res, next) => {
 app.use('/api/virturia',    require('./routes/virturia'));
 app.use('/api/virturia',    require('./routes/virturia-auth'));
 app.use('/api/virturia',    require('./routes/virturia-admin'));
+app.use('/api/virturia',    require('./routes/virturia-objetivo'));
 app.use('/api/virturia-b365', (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   next();
