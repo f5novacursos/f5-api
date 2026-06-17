@@ -136,5 +136,83 @@ module.exports = function (db, tabela) {
     }
   });
 
+  // ── GET /melhores-entradas ──────────────────────────────────────
+  // A "aba Especial": pega o que saiu por último em cada slot e prevê
+  // a célula ACIMA. Retorna só o TOP N por liga (mastigado).
+  router.get('/melhores-entradas', auth, async (req, res) => {
+    try {
+      const horas      = parseInt(req.query.horas) || 720;
+      const topN       = parseInt(req.query.top) || 3;
+      const minAmostra = parseInt(req.query.min_amostra) || 8;
+      const minConf    = parseInt(req.query.min_conf) || 60;
+      const cutoff     = Date.now() - horas * 3600000;
+
+      const { rows } = await db.query(`
+        SELECT liga, slot_min, ft_a, ft_b, ft_str, start_time
+        FROM ${tabela}
+        WHERE start_time > $1
+        ORDER BY liga, slot_min, start_time ASC
+      `, [cutoff]);
+
+      // Organiza por liga → slot → lista cronológica
+      const porLiga = {};
+      for (const r of rows) {
+        const lg = r.liga, slot = parseInt(r.slot_min);
+        (porLiga[lg] = porLiga[lg] || {});
+        (porLiga[lg][slot] = porLiga[lg][slot] || []).push({
+          ts: Number(r.start_time), ft: r.ft_str,
+          a: parseInt(r.ft_a), b: parseInt(r.ft_b)
+        });
+      }
+
+      const out = {};
+      for (const lg in porLiga) {
+        const slots = porLiga[lg];
+        // adjacência: slot|ft → mercados da célula acima
+        const stat = {};
+        for (const slot in slots) {
+          const arr = slots[slot];
+          for (let i = 0; i < arr.length - 1; i++) {
+            const gap = arr[i+1].ts - arr[i].ts;
+            if (gap >= MIN_GAP && gap <= MAX_GAP) {
+              const key = slot + '|' + arr[i].ft;
+              if (!stat[key]) stat[key] = { n:0, under:0, over:0, ambas:0 };
+              const s = stat[key]; s.n++;
+              const g = arr[i+1].a + arr[i+1].b;
+              if (g <= 2) s.under++;
+              if (g >= 3) s.over++;
+              if (arr[i+1].a > 0 && arr[i+1].b > 0) s.ambas++;
+            }
+          }
+        }
+
+        // último resultado de cada slot = gatilho atual
+        const cands = [];
+        for (const slot in slots) {
+          const arr = slots[slot];
+          const ult = arr[arr.length - 1];
+          const s = stat[slot + '|' + ult.ft];
+          if (!s || s.n < minAmostra) continue;
+          const opts = [
+            { m:'UNDER 2.5', p: Math.round(s.under*100/s.n) },
+            { m:'OVER 2.5',  p: Math.round(s.over*100/s.n) },
+            { m:'AMBAS SIM', p: Math.round(s.ambas*100/s.n) },
+          ].sort((a,b) => b.p - a.p);
+          if (opts[0].p < minConf) continue;
+          cands.push({ slot:+slot, gatilho: ult.ft, mercado: opts[0].m, pct: opts[0].p, amostra: s.n });
+        }
+
+        // top N por confiança, exibido em ordem de slot
+        cands.sort((a,b) => b.pct - a.pct || b.amostra - a.amostra);
+        out[lg] = cands.slice(0, topN).sort((a,b) => a.slot - b.slot);
+      }
+
+      res.json({ ok: true, ligas: out });
+    } catch (e) {
+      console.error('[melhores-entradas]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   return router;
 };
