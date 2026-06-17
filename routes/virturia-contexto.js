@@ -33,7 +33,8 @@ function mercadosDe(ftA, ftB) {
 }
 
 // Factory: cria o router para uma tabela (Betano ou Bet365)
-module.exports = function (db, tabela) {
+// clockOffsetMs: relógio do provedor (Betano -3h = -10800000, Bet365 +1h = +3600000)
+module.exports = function (db, tabela, clockOffsetMs = 0) {
   const router = require('express').Router();
 
   // ── GET /matriz-acima ───────────────────────────────────────────
@@ -199,7 +200,9 @@ module.exports = function (db, tabela) {
             { m:'AMBAS SIM', p: Math.round(s.ambas*100/s.n) },
           ].sort((a,b) => b.p - a.p);
           if (opts[0].p < minConf) continue;
-          cands.push({ slot:+slot, gatilho: ult.ft, mercado: opts[0].m, pct: opts[0].p, amostra: s.n });
+          // hora alvo = hora local do provedor do gatilho + 1 (a célula ACIMA = próxima hora)
+          const horaAlvo = (new Date(ult.ts + clockOffsetMs).getUTCHours() + 1) % 24;
+          cands.push({ slot:+slot, gatilho: ult.ft, mercado: opts[0].m, pct: opts[0].p, amostra: s.n, hora_alvo: horaAlvo });
         }
 
         // top N por confiança, exibido em ordem de slot
@@ -207,7 +210,13 @@ module.exports = function (db, tabela) {
         out[lg] = cands.slice(0, topN).sort((a,b) => a.slot - b.slot);
       }
 
-      res.json({ ok: true, ligas: out });
+      // hora alvo dominante (a mais frequente entre todas as entradas) p/ o banner
+      const contHora = {};
+      for (const lg in out) for (const e of out[lg]) contHora[e.hora_alvo] = (contHora[e.hora_alvo]||0) + 1;
+      let horaAlvoDom = null, maxC = 0;
+      for (const h in contHora) if (contHora[h] > maxC) { maxC = contHora[h]; horaAlvoDom = +h; }
+
+      res.json({ ok: true, hora_alvo: horaAlvoDom, ligas: out });
     } catch (e) {
       console.error('[melhores-entradas]', e);
       res.status(500).json({ error: e.message });

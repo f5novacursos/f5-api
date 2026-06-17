@@ -35,7 +35,7 @@ app.use('/api/virturia',    require('./routes/virturia-auth'));
 app.use('/api/virturia',    require('./routes/virturia-admin'));
 app.use('/api/virturia',    require('./routes/virturia-objetivo'));
 const _dbVirturia = require('./db');
-app.use('/api/virturia',    require('./routes/virturia-contexto')(_dbVirturia, 'virturia_resultados'));
+app.use('/api/virturia',    require('./routes/virturia-contexto')(_dbVirturia, 'virturia_resultados', -10800000));
 app.use('/api/virturia-b365', (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   next();
