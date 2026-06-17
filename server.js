@@ -41,7 +41,7 @@ app.use('/api/virturia-b365', (req, res, next) => {
   next();
 });
 app.use('/api/virturia-b365', require('./routes/virturia-b365'));
-app.use('/api/virturia-b365', require('./routes/virturia-contexto')(_dbVirturia, 'virturia_resultados_b365'));
+app.use('/api/virturia-b365', require('./routes/virturia-contexto')(_dbVirturia, 'virturia_resultados_b365', 3600000));
 app.use('/api',             require('./routes/portfolio'));
 app.use('/api',             require('./routes/clientes-web'));
 
