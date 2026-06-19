@@ -145,19 +145,21 @@ function calcularEntradas(porLiga, clockOffsetMs, { topN, minAmostra, minConf, g
       const e = entradaDoSlot(slot, arr, idxGat, stat1, stat2, clockOffsetMs, minAmostra, minConf);
       if (e) cands.push(e);
     }
-    cands.sort((a, b) => b.pct - a.pct || b.amostra - a.amostra);
-    // dedupe Martingale: descarta entrada cujo slot já é tiro (próximo/seguinte) de
-    // outra melhor do MESMO mercado na mesma liga — evita poluição/contagem dobrada
+    // dedupe Martingale: processa por ORDEM DE SLOT — a entrada mais cedo ANCORA o
+    // martingale e cobre os 2 slots seguintes do mesmo mercado; as de dentro da janela
+    // saem (ex: 38' UNDER já cobre 41' UNDER, que é seu 2º tiro). Evita redundância.
     const grid = Object.keys(slots).map(Number).sort((a, b) => a - b);
     const cobertos = new Set();
-    const filtrados = [];
-    for (const c of cands) {
+    const ancoras = [];
+    for (const c of cands.slice().sort((a, b) => a.slot - b.slot)) {
       if (cobertos.has(c.mercado + '|' + c.slot)) continue;
-      filtrados.push(c);
+      ancoras.push(c);
       const gi = grid.indexOf(c.slot);
       for (let k = 1; k <= 2; k++) if (grid[gi + k] != null) cobertos.add(c.mercado + '|' + grid[gi + k]);
     }
-    out[lg] = filtrados.slice(0, topN).sort((a, b) => a.slot - b.slot);
+    // top N por confiança, exibido em ordem de slot
+    ancoras.sort((a, b) => b.pct - a.pct || b.amostra - a.amostra);
+    out[lg] = ancoras.slice(0, topN).sort((a, b) => a.slot - b.slot);
   }
   return out;
 }
