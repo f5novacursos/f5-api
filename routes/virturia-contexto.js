@@ -200,6 +200,7 @@ function initSnapTable(db) {
     // migrações idempotentes (tabela pode já existir da versão anterior)
     await db.query(`ALTER TABLE virturia_especial_snapshot ADD COLUMN IF NOT EXISTS metodo VARCHAR(8)`);
     await db.query(`ALTER TABLE virturia_especial_snapshot ALTER COLUMN resultado TYPE VARCHAR(16)`);
+    await db.query(`ALTER TABLE virturia_especial_snapshot ADD COLUMN IF NOT EXISTS origem VARCHAR(5)`);
   })().catch(e => { _snapTableReady = null; throw e; });
   return _snapTableReady;
 }
@@ -212,7 +213,7 @@ function dataHoraProvedor(ts, clockOffsetMs) {
 
 // Grava a foto de UMA hora-alvo (atual ou passada). Só a 1ª escrita vale (trava).
 // porLigaCache: reaproveita a carga do banco quando chamado em lote (backfill).
-async function gravarFotoHora(db, tabela, clockOffsetMs, provedor, alvoData, alvoHora, porLigaCache) {
+async function gravarFotoHora(db, tabela, clockOffsetMs, provedor, alvoData, alvoHora, porLigaCache, origem = 'vivo') {
   const { rows: ex } = await db.query(
     `SELECT 1 FROM virturia_especial_snapshot WHERE provedor=$1 AND data=$2 AND hora_alvo=$3 LIMIT 1`,
     [provedor, alvoData, alvoHora]
@@ -234,10 +235,10 @@ async function gravarFotoHora(db, tabela, clockOffsetMs, provedor, alvoData, alv
     for (const e of ligas[lg]) {
       const r = await db.query(`
         INSERT INTO virturia_especial_snapshot
-          (provedor, data, hora_alvo, liga, slot, gatilho, tipo, mercado, pct, amostra)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          (provedor, data, hora_alvo, liga, slot, gatilho, tipo, mercado, pct, amostra, origem)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
         ON CONFLICT (provedor, data, hora_alvo, liga, slot) DO NOTHING
-      `, [provedor, alvoData, alvoHora, lg, e.slot, e.gatilho, e.tipo, e.mercado, e.pct, e.amostra]);
+      `, [provedor, alvoData, alvoHora, lg, e.slot, e.gatilho, e.tipo, e.mercado, e.pct, e.amostra, origem]);
       n += r.rowCount;
     }
   }
@@ -517,7 +518,7 @@ module.exports = function (db, tabela, clockOffsetMs = 0) {
       const { rows } = await db.query(`
         SELECT data, hora_alvo, liga, slot, gatilho, tipo, mercado, pct, amostra, resultado, acerto, criado_em
         FROM virturia_especial_snapshot
-        WHERE provedor=$1 AND criado_em >= $2
+        WHERE provedor=$1 AND criado_em >= $2 AND origem = 'vivo'
         ORDER BY criado_em DESC, liga, slot
       `, [provedor, desde]);
       const conf = rows.filter(r => r.acerto !== null);
@@ -539,11 +540,12 @@ module.exports = function (db, tabela, clockOffsetMs = 0) {
   // Agendadores em background (1 por provedor): tira a foto da hora (trava)
   // e confere os acertos contra a Matrix. Aditivo — não afeta as rotas acima.
   initSnapTable(db).then(async () => {
+    // limpa o LIXO reconstruído (sem origem) — conta só hora REAL ao vivo daqui pra frente.
+    // Idempotente: as fotos novas têm origem='vivo', então em restarts futuros não apaga nada.
+    await db.query(`DELETE FROM virturia_especial_snapshot WHERE provedor=$1 AND (origem IS NULL OR origem <> 'vivo')`, [provedor])
+      .then(r => { if (r.rowCount) console.log(`[especial-limpa ${provedor}] removeu ${r.rowCount} entradas reconstruídas (lixo)`); })
+      .catch(e => console.error('[especial-limpa]', e.message));
     await snapshotHora(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-snap]', e.message));
-    // reconstrói as últimas 48h pra o histórico já nascer cheio (idempotente)
-    await backfillSnapshots(db, tabela, clockOffsetMs, provedor, 48).catch(e => console.error('[especial-backfill]', e.message));
-    // re-confere o que foi gravado com a regra antiga (tiro seco) → Martingale
-    await regradeLegacy(db, provedor).catch(e => console.error('[especial-regrade]', e.message));
     await conferirSnapshots(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-conf]', e.message));
   }).catch(e => console.error('[especial-snap init]', e.message));
   setInterval(() => snapshotHora(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-snap]', e.message)), 60 * 1000);
