@@ -146,7 +146,18 @@ function calcularEntradas(porLiga, clockOffsetMs, { topN, minAmostra, minConf, g
       if (e) cands.push(e);
     }
     cands.sort((a, b) => b.pct - a.pct || b.amostra - a.amostra);
-    out[lg] = cands.slice(0, topN).sort((a, b) => a.slot - b.slot);
+    // dedupe Martingale: descarta entrada cujo slot já é tiro (próximo/seguinte) de
+    // outra melhor do MESMO mercado na mesma liga — evita poluição/contagem dobrada
+    const grid = Object.keys(slots).map(Number).sort((a, b) => a - b);
+    const cobertos = new Set();
+    const filtrados = [];
+    for (const c of cands) {
+      if (cobertos.has(c.mercado + '|' + c.slot)) continue;
+      filtrados.push(c);
+      const gi = grid.indexOf(c.slot);
+      for (let k = 1; k <= 2; k++) if (grid[gi + k] != null) cobertos.add(c.mercado + '|' + grid[gi + k]);
+    }
+    out[lg] = filtrados.slice(0, topN).sort((a, b) => a.slot - b.slot);
   }
   return out;
 }
@@ -164,26 +175,32 @@ const SNAP_HORAS = 720, SNAP_TOP = 6, SNAP_CONF = 60, SNAP_AMOSTRA = 8;
 let _snapTableReady = null;
 function initSnapTable(db) {
   if (_snapTableReady) return _snapTableReady;
-  _snapTableReady = db.query(`
-    CREATE TABLE IF NOT EXISTS virturia_especial_snapshot (
-      id           SERIAL PRIMARY KEY,
-      provedor     VARCHAR(10) NOT NULL,
-      data         VARCHAR(10) NOT NULL,
-      hora_alvo    INTEGER NOT NULL,
-      liga         VARCHAR(40) NOT NULL,
-      slot         INTEGER NOT NULL,
-      gatilho      VARCHAR(20),
-      tipo         VARCHAR(6),
-      mercado      VARCHAR(12) NOT NULL,
-      pct          INTEGER NOT NULL,
-      amostra      INTEGER NOT NULL,
-      resultado    VARCHAR(8),
-      acerto       BOOLEAN,
-      criado_em    TIMESTAMP DEFAULT NOW(),
-      conferido_em TIMESTAMP,
-      UNIQUE(provedor, data, hora_alvo, liga, slot)
-    )
-  `).catch(e => { _snapTableReady = null; throw e; });
+  _snapTableReady = (async () => {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS virturia_especial_snapshot (
+        id           SERIAL PRIMARY KEY,
+        provedor     VARCHAR(10) NOT NULL,
+        data         VARCHAR(10) NOT NULL,
+        hora_alvo    INTEGER NOT NULL,
+        liga         VARCHAR(40) NOT NULL,
+        slot         INTEGER NOT NULL,
+        gatilho      VARCHAR(20),
+        tipo         VARCHAR(6),
+        mercado      VARCHAR(12) NOT NULL,
+        pct          INTEGER NOT NULL,
+        amostra      INTEGER NOT NULL,
+        resultado    VARCHAR(16),
+        acerto       BOOLEAN,
+        metodo       VARCHAR(8),
+        criado_em    TIMESTAMP DEFAULT NOW(),
+        conferido_em TIMESTAMP,
+        UNIQUE(provedor, data, hora_alvo, liga, slot)
+      )
+    `);
+    // migrações idempotentes (tabela pode já existir da versão anterior)
+    await db.query(`ALTER TABLE virturia_especial_snapshot ADD COLUMN IF NOT EXISTS metodo VARCHAR(8)`);
+    await db.query(`ALTER TABLE virturia_especial_snapshot ALTER COLUMN resultado TYPE VARCHAR(16)`);
+  })().catch(e => { _snapTableReady = null; throw e; });
   return _snapTableReady;
 }
 
@@ -249,7 +266,24 @@ async function backfillSnapshots(db, tabela, clockOffsetMs, provedor, horasAtras
   if (total) console.log(`[especial-backfill ${provedor}] reconstruiu ${total} entradas das últimas ${horasAtras}h`);
 }
 
-// Confere as fotos ainda não avaliadas contra o resultado real da Matrix.
+// Acha o resultado real de uma célula (liga, slot, hora, data) na Matrix.
+async function acharResultadoCelula(db, tabela, clockOffsetMs, liga, slot, hora, data) {
+  const { rows } = await db.query(`
+    SELECT ft_a, ft_b, ft_str, start_time
+    FROM ${tabela}
+    WHERE liga=$1 AND slot_min=$2
+    ORDER BY start_time DESC LIMIT 300
+  `, [liga, slot]);
+  for (const j of rows) {
+    const d = new Date(Number(j.start_time) + clockOffsetMs);
+    if (d.getUTCHours() === hora && d.toISOString().slice(0, 10) === data) return j;
+  }
+  return null;
+}
+
+// Confere as fotos ainda não avaliadas — MARTINGALE 3 TIROS:
+// GREEN se o mercado bater no slot OU nos 2 slots seguintes da liga (mesma hora);
+// RED só se os 3 jogaram e falharam; PENDENTE enquanto não fecharam.
 async function conferirSnapshots(db, tabela, clockOffsetMs, provedor) {
   await initSnapTable(db);
   const { rows } = await db.query(`
@@ -257,27 +291,57 @@ async function conferirSnapshots(db, tabela, clockOffsetMs, provedor) {
     FROM virturia_especial_snapshot
     WHERE provedor=$1 AND acerto IS NULL
     ORDER BY data, hora_alvo
-    LIMIT 500
+    LIMIT 2000
   `, [provedor]);
+  const gridCache = {};
   for (const s of rows) {
-    const { rows: jogos } = await db.query(`
-      SELECT ft_a, ft_b, ft_str, start_time
-      FROM ${tabela}
-      WHERE liga=$1 AND slot_min=$2
-      ORDER BY start_time DESC LIMIT 300
-    `, [s.liga, s.slot]);
-    let real = null;
-    for (const j of jogos) {
-      const d = new Date(Number(j.start_time) + clockOffsetMs);
-      if (d.getUTCHours() === s.hora_alvo && d.toISOString().slice(0, 10) === s.data) { real = j; break; }
+    // grid de slots da liga (Express = 1 em 1; demais = 3 em 3) — descoberto do banco
+    if (!gridCache[s.liga]) {
+      const { rows: sl } = await db.query(
+        `SELECT DISTINCT slot_min FROM ${tabela} WHERE liga=$1 ORDER BY slot_min ASC`, [s.liga]);
+      gridCache[s.liga] = sl.map(x => parseInt(x.slot_min));
     }
-    if (!real) continue; // jogo dessa hora ainda não saiu
-    const acerto = mercadoBateu(s.mercado, parseInt(real.ft_a), parseInt(real.ft_b));
+    const grid = gridCache[s.liga];
+    const idx = grid.indexOf(s.slot);
+    if (idx < 0) continue;
+    const tiros = grid.slice(idx, idx + 3); // S e os 2 slots seguintes (3 tiros)
+    let acerto = null, resultado = null, jogados = 0;
+    for (const ts of tiros) {
+      const j = await acharResultadoCelula(db, tabela, clockOffsetMs, s.liga, ts, s.hora_alvo, s.data);
+      if (!j) continue; // esse tiro ainda não jogou
+      jogados++;
+      if (mercadoBateu(s.mercado, parseInt(j.ft_a), parseInt(j.ft_b))) {
+        acerto = true;
+        resultado = (ts === s.slot ? '' : String(ts).padStart(2, '0') + "' ") + j.ft_str; // marca em qual tiro bateu
+        break;
+      }
+    }
+    if (acerto === null) {
+      if (jogados >= tiros.length && tiros.length > 0) {
+        acerto = false; // os 3 jogaram e nenhum bateu
+        const j0 = await acharResultadoCelula(db, tabela, clockOffsetMs, s.liga, s.slot, s.hora_alvo, s.data);
+        resultado = j0 ? j0.ft_str : null;
+      } else {
+        continue; // ainda faltam tiros jogarem → pendente
+      }
+    }
     await db.query(
-      `UPDATE virturia_especial_snapshot SET resultado=$1, acerto=$2, conferido_em=NOW() WHERE id=$3`,
-      [real.ft_str, acerto, s.id]
+      `UPDATE virturia_especial_snapshot SET resultado=$1, acerto=$2, metodo='m3', conferido_em=NOW() WHERE id=$3`,
+      [resultado, acerto, s.id]
     );
   }
+}
+
+// Re-confere (1x) as horas gravadas com a regra antiga (tiro seco) → Martingale.
+async function regradeLegacy(db, provedor) {
+  await initSnapTable(db);
+  const { rowCount } = await db.query(
+    `UPDATE virturia_especial_snapshot
+     SET acerto=NULL, resultado=NULL, conferido_em=NULL
+     WHERE provedor=$1 AND acerto IS NOT NULL AND metodo IS DISTINCT FROM 'm3'`,
+    [provedor]
+  );
+  if (rowCount) console.log(`[especial-regrade ${provedor}] ${rowCount} entradas re-marcadas p/ Martingale`);
 }
 
 // Factory: cria o router para uma tabela (Betano ou Bet365)
@@ -478,6 +542,8 @@ module.exports = function (db, tabela, clockOffsetMs = 0) {
     await snapshotHora(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-snap]', e.message));
     // reconstrói as últimas 48h pra o histórico já nascer cheio (idempotente)
     await backfillSnapshots(db, tabela, clockOffsetMs, provedor, 48).catch(e => console.error('[especial-backfill]', e.message));
+    // re-confere o que foi gravado com a regra antiga (tiro seco) → Martingale
+    await regradeLegacy(db, provedor).catch(e => console.error('[especial-regrade]', e.message));
     await conferirSnapshots(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-conf]', e.message));
   }).catch(e => console.error('[especial-snap init]', e.message));
   setInterval(() => snapshotHora(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-snap]', e.message)), 60 * 1000);
