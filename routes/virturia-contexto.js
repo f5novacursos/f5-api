@@ -255,20 +255,6 @@ async function snapshotHora(db, tabela, clockOffsetMs, provedor) {
   await gravarFotoHora(db, tabela, clockOffsetMs, provedor, data, hora);
 }
 
-// Reconstrói as fotos das últimas N horas a partir do banco (1x no boot).
-// Idempotente: horas já gravadas não são tocadas (ON CONFLICT / exists).
-async function backfillSnapshots(db, tabela, clockOffsetMs, provedor, horasAtras = 48) {
-  await initSnapTable(db);
-  const porLiga = await carregarPorLigaSlot(db, tabela, SNAP_HORAS); // carrega 1x e reusa
-  let total = 0;
-  for (let i = 1; i <= horasAtras; i++) {
-    const { data, hora } = dataHoraProvedor(Date.now() - i * 3600000, clockOffsetMs);
-    try { total += await gravarFotoHora(db, tabela, clockOffsetMs, provedor, data, hora, porLiga); }
-    catch (e) { console.error('[especial-backfill]', e.message); }
-  }
-  if (total) console.log(`[especial-backfill ${provedor}] reconstruiu ${total} entradas das últimas ${horasAtras}h`);
-}
-
 // Acha o resultado real de uma célula (liga, slot, hora, data) na Matrix.
 async function acharResultadoCelula(db, tabela, clockOffsetMs, liga, slot, hora, data) {
   const { rows } = await db.query(`
@@ -333,18 +319,6 @@ async function conferirSnapshots(db, tabela, clockOffsetMs, provedor) {
       [resultado, acerto, s.id]
     );
   }
-}
-
-// Re-confere (1x) as horas gravadas com a regra antiga (tiro seco) → Martingale.
-async function regradeLegacy(db, provedor) {
-  await initSnapTable(db);
-  const { rowCount } = await db.query(
-    `UPDATE virturia_especial_snapshot
-     SET acerto=NULL, resultado=NULL, conferido_em=NULL
-     WHERE provedor=$1 AND acerto IS NOT NULL AND metodo IS DISTINCT FROM 'm3'`,
-    [provedor]
-  );
-  if (rowCount) console.log(`[especial-regrade ${provedor}] ${rowCount} entradas re-marcadas p/ Martingale`);
 }
 
 // Factory: cria o router para uma tabela (Betano ou Bet365)
