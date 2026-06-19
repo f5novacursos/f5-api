@@ -49,6 +49,204 @@ function mercadosDe(ftA, ftB) {
   return m;
 }
 
+// ── Helpers compartilhados da engine de adjacência ──────────────────
+async function carregarPorLigaSlot(db, tabela, horas) {
+  const cutoff = Date.now() - horas * 3600000;
+  const { rows } = await db.query(`
+    SELECT liga, slot_min, ft_a, ft_b, ft_str, start_time
+    FROM ${tabela}
+    WHERE start_time > $1
+    ORDER BY liga, slot_min, start_time ASC
+  `, [cutoff]);
+  const porLiga = {};
+  for (const r of rows) {
+    const lg = r.liga, slot = parseInt(r.slot_min);
+    (porLiga[lg] = porLiga[lg] || {});
+    (porLiga[lg][slot] = porLiga[lg][slot] || []).push({
+      ts: Number(r.start_time), ft: r.ft_str,
+      a: parseInt(r.ft_a), b: parseInt(r.ft_b)
+    });
+  }
+  return porLiga;
+}
+
+function calcStats(slots) {
+  const stat1 = {}, stat2 = {};
+  for (const slot in slots) {
+    const arr = slots[slot];
+    for (let i = 0; i < arr.length - 1; i++) {
+      const gap = arr[i+1].ts - arr[i].ts;
+      if (gap < MIN_GAP || gap > MAX_GAP) continue;
+      const k1 = slot + '|' + arr[i].ft;
+      (stat1[k1] = stat1[k1] || novoStat());
+      acumulaStat(stat1[k1], arr[i+1].a, arr[i+1].b);
+      if (i >= 1) {
+        const gapPrev = arr[i].ts - arr[i-1].ts;
+        if (gapPrev >= MIN_GAP && gapPrev <= MAX_GAP) {
+          const k2 = slot + '||' + arr[i-1].ft + '>' + arr[i].ft;
+          (stat2[k2] = stat2[k2] || novoStat());
+          acumulaStat(stat2[k2], arr[i+1].a, arr[i+1].b);
+        }
+      }
+    }
+  }
+  return { stat1, stat2 };
+}
+
+// Gera a entrada de um slot a partir do gatilho no índice idxGat (e o anterior p/ seq-2)
+function entradaDoSlot(slot, arr, idxGat, stat1, stat2, clockOffsetMs, minAmostra, minConf) {
+  const ult = arr[idxGat];
+  const horaAlvo = (new Date(ult.ts + clockOffsetMs).getUTCHours() + 1) % 24;
+  const opcoes = [];
+  const s1 = stat1[slot + '|' + ult.ft];
+  if (s1 && s1.n >= minAmostra) {
+    const b = melhorMercado(s1);
+    opcoes.push({ tipo:'seq1', gatilho: ult.ft, mercado: b.m, pct: b.p, amostra: s1.n });
+  }
+  if (idxGat >= 1) {
+    const pen = arr[idxGat - 1];
+    if (ult.ts - pen.ts >= MIN_GAP && ult.ts - pen.ts <= MAX_GAP) {
+      const s2 = stat2[slot + '||' + pen.ft + '>' + ult.ft];
+      if (s2 && s2.n >= minAmostra) {
+        const b = melhorMercado(s2);
+        opcoes.push({ tipo:'seq2', gatilho: pen.ft + '>' + ult.ft, mercado: b.m, pct: b.p, amostra: s2.n });
+      }
+    }
+  }
+  if (!opcoes.length) return null;
+  opcoes.sort((a, b) => b.pct - a.pct || b.amostra - a.amostra);
+  const win = opcoes[0];
+  if (win.pct < minConf) return null;
+  return { slot:+slot, gatilho: win.gatilho, tipo: win.tipo, mercado: win.mercado, pct: win.pct, amostra: win.amostra, hora_alvo: horaAlvo };
+}
+
+// Calcula as entradas por liga (top N por confiança, em ordem de slot).
+// Se horaAlvoAlvo != null, o gatilho de cada slot é o ÚLTIMO jogo cujo hora_alvo
+// === horaAlvoAlvo (foto fiel da hora — independe do minuto em que roda).
+function calcularEntradas(porLiga, clockOffsetMs, { topN, minAmostra, minConf, horaAlvoAlvo = null }) {
+  const out = {};
+  for (const lg in porLiga) {
+    const slots = porLiga[lg];
+    const { stat1, stat2 } = calcStats(slots);
+    const cands = [];
+    for (const slot in slots) {
+      const arr = slots[slot];
+      let idxGat = arr.length - 1;
+      if (horaAlvoAlvo != null) {
+        idxGat = -1;
+        for (let i = arr.length - 1; i >= 0; i--) {
+          const ha = (new Date(arr[i].ts + clockOffsetMs).getUTCHours() + 1) % 24;
+          if (ha === horaAlvoAlvo) { idxGat = i; break; }
+        }
+        if (idxGat < 0) continue;
+      }
+      const e = entradaDoSlot(slot, arr, idxGat, stat1, stat2, clockOffsetMs, minAmostra, minConf);
+      if (e) cands.push(e);
+    }
+    cands.sort((a, b) => b.pct - a.pct || b.amostra - a.amostra);
+    out[lg] = cands.slice(0, topN).sort((a, b) => a.slot - b.slot);
+  }
+  return out;
+}
+
+function mercadoBateu(mercado, a, b) {
+  const g = a + b;
+  if (mercado.includes('UNDER')) return g <= 2;
+  if (mercado.includes('OVER'))  return g >= 3;
+  return a > 0 && b > 0; // AMBAS SIM
+}
+
+// ── Snapshot da aba Especial (trava AO VIVO + histórico de acerto) ──
+// Foto canônica: histórico 720h, top 6/liga, conf>=60, amostra>=8.
+const SNAP_HORAS = 720, SNAP_TOP = 6, SNAP_CONF = 60, SNAP_AMOSTRA = 8;
+let _snapTableReady = null;
+function initSnapTable(db) {
+  if (_snapTableReady) return _snapTableReady;
+  _snapTableReady = db.query(`
+    CREATE TABLE IF NOT EXISTS virturia_especial_snapshot (
+      id           SERIAL PRIMARY KEY,
+      provedor     VARCHAR(10) NOT NULL,
+      data         VARCHAR(10) NOT NULL,
+      hora_alvo    INTEGER NOT NULL,
+      liga         VARCHAR(40) NOT NULL,
+      slot         INTEGER NOT NULL,
+      gatilho      VARCHAR(20),
+      tipo         VARCHAR(6),
+      mercado      VARCHAR(12) NOT NULL,
+      pct          INTEGER NOT NULL,
+      amostra      INTEGER NOT NULL,
+      resultado    VARCHAR(8),
+      acerto       BOOLEAN,
+      criado_em    TIMESTAMP DEFAULT NOW(),
+      conferido_em TIMESTAMP,
+      UNIQUE(provedor, data, hora_alvo, liga, slot)
+    )
+  `).catch(e => { _snapTableReady = null; throw e; });
+  return _snapTableReady;
+}
+
+// Grava a foto da hora AO VIVO atual — só a 1ª escrita da hora vale (trava).
+async function snapshotHora(db, tabela, clockOffsetMs, provedor) {
+  await initSnapTable(db);
+  const agora = new Date(Date.now() + clockOffsetMs);
+  const horaViva = agora.getUTCHours();
+  const data = agora.toISOString().slice(0, 10);
+  // Já fotografada? então não recalcula (mantém a foto travada e barato por minuto)
+  const { rows: ex } = await db.query(
+    `SELECT 1 FROM virturia_especial_snapshot WHERE provedor=$1 AND data=$2 AND hora_alvo=$3 LIMIT 1`,
+    [provedor, data, horaViva]
+  );
+  if (ex.length) return;
+  const porLiga = await carregarPorLigaSlot(db, tabela, SNAP_HORAS);
+  const ligas = calcularEntradas(porLiga, clockOffsetMs, {
+    topN: SNAP_TOP, minAmostra: SNAP_AMOSTRA, minConf: SNAP_CONF, horaAlvoAlvo: horaViva
+  });
+  let n = 0;
+  for (const lg in ligas) {
+    for (const e of ligas[lg]) {
+      const r = await db.query(`
+        INSERT INTO virturia_especial_snapshot
+          (provedor, data, hora_alvo, liga, slot, gatilho, tipo, mercado, pct, amostra)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        ON CONFLICT (provedor, data, hora_alvo, liga, slot) DO NOTHING
+      `, [provedor, data, horaViva, lg, e.slot, e.gatilho, e.tipo, e.mercado, e.pct, e.amostra]);
+      n += r.rowCount;
+    }
+  }
+  if (n) console.log(`[especial-snap ${provedor}] foto gravada — ${data} ${horaViva}h (${n} entradas)`);
+}
+
+// Confere as fotos ainda não avaliadas contra o resultado real da Matrix.
+async function conferirSnapshots(db, tabela, clockOffsetMs, provedor) {
+  await initSnapTable(db);
+  const { rows } = await db.query(`
+    SELECT id, data, hora_alvo, liga, slot, mercado
+    FROM virturia_especial_snapshot
+    WHERE provedor=$1 AND acerto IS NULL
+    ORDER BY data, hora_alvo
+    LIMIT 500
+  `, [provedor]);
+  for (const s of rows) {
+    const { rows: jogos } = await db.query(`
+      SELECT ft_a, ft_b, ft_str, start_time
+      FROM ${tabela}
+      WHERE liga=$1 AND slot_min=$2
+      ORDER BY start_time DESC LIMIT 300
+    `, [s.liga, s.slot]);
+    let real = null;
+    for (const j of jogos) {
+      const d = new Date(Number(j.start_time) + clockOffsetMs);
+      if (d.getUTCHours() === s.hora_alvo && d.toISOString().slice(0, 10) === s.data) { real = j; break; }
+    }
+    if (!real) continue; // jogo dessa hora ainda não saiu
+    const acerto = mercadoBateu(s.mercado, parseInt(real.ft_a), parseInt(real.ft_b));
+    await db.query(
+      `UPDATE virturia_especial_snapshot SET resultado=$1, acerto=$2, conferido_em=NOW() WHERE id=$3`,
+      [real.ft_str, acerto, s.id]
+    );
+  }
+}
+
 // Factory: cria o router para uma tabela (Betano ou Bet365)
 // clockOffsetMs: relógio do provedor (Betano -3h = -10800000, Bet365 +1h = +3600000)
 module.exports = function (db, tabela, clockOffsetMs = 0) {
@@ -163,91 +361,9 @@ module.exports = function (db, tabela, clockOffsetMs = 0) {
       const topN       = parseInt(req.query.top) || 3;
       const minAmostra = parseInt(req.query.min_amostra) || 8;
       const minConf    = parseInt(req.query.min_conf) || 60;
-      const cutoff     = Date.now() - horas * 3600000;
 
-      const { rows } = await db.query(`
-        SELECT liga, slot_min, ft_a, ft_b, ft_str, start_time
-        FROM ${tabela}
-        WHERE start_time > $1
-        ORDER BY liga, slot_min, start_time ASC
-      `, [cutoff]);
-
-      // Organiza por liga → slot → lista cronológica
-      const porLiga = {};
-      for (const r of rows) {
-        const lg = r.liga, slot = parseInt(r.slot_min);
-        (porLiga[lg] = porLiga[lg] || {});
-        (porLiga[lg][slot] = porLiga[lg][slot] || []).push({
-          ts: Number(r.start_time), ft: r.ft_str,
-          a: parseInt(r.ft_a), b: parseInt(r.ft_b)
-        });
-      }
-
-      const out = {};
-      for (const lg in porLiga) {
-        const slots = porLiga[lg];
-        // Dois gatilhos por slot, ambos prevendo a célula ACIMA (próxima hora):
-        //  stat1: slot|ft         (último resultado)        → mercados de cima
-        //  stat2: slot||ft1>ft2   (2 últimos consecutivos)  → mercados de cima
-        const stat1 = {}, stat2 = {};
-        for (const slot in slots) {
-          const arr = slots[slot];
-          for (let i = 0; i < arr.length - 1; i++) {
-            const gap = arr[i+1].ts - arr[i].ts;
-            if (gap < MIN_GAP || gap > MAX_GAP) continue;
-            // gatilho de 1: arr[i] → arr[i+1]
-            const k1 = slot + '|' + arr[i].ft;
-            (stat1[k1] = stat1[k1] || novoStat());
-            acumulaStat(stat1[k1], arr[i+1].a, arr[i+1].b);
-            // gatilho de 2: (arr[i-1], arr[i]) → arr[i+1], exige os dois gaps ~60min (horas consecutivas)
-            if (i >= 1) {
-              const gapPrev = arr[i].ts - arr[i-1].ts;
-              if (gapPrev >= MIN_GAP && gapPrev <= MAX_GAP) {
-                const k2 = slot + '||' + arr[i-1].ft + '>' + arr[i].ft;
-                (stat2[k2] = stat2[k2] || novoStat());
-                acumulaStat(stat2[k2], arr[i+1].a, arr[i+1].b);
-              }
-            }
-          }
-        }
-
-        // gatilho atual de cada slot = seus últimos resultados; pega o melhor entre seq-2 e seq-1
-        const cands = [];
-        for (const slot in slots) {
-          const arr = slots[slot];
-          const ult = arr[arr.length - 1];
-          const horaAlvo = (new Date(ult.ts + clockOffsetMs).getUTCHours() + 1) % 24;
-
-          const opcoes = [];
-          // seq-1 (sempre disponível)
-          const s1 = stat1[slot + '|' + ult.ft];
-          if (s1 && s1.n >= minAmostra) {
-            const b = melhorMercado(s1);
-            opcoes.push({ tipo:'seq1', gatilho: ult.ft, mercado: b.m, pct: b.p, amostra: s1.n });
-          }
-          // seq-2 (só se os 2 últimos forem horas consecutivas e tiver amostra)
-          if (arr.length >= 2) {
-            const pen = arr[arr.length - 2];
-            if (ult.ts - pen.ts >= MIN_GAP && ult.ts - pen.ts <= MAX_GAP) {
-              const s2 = stat2[slot + '||' + pen.ft + '>' + ult.ft];
-              if (s2 && s2.n >= minAmostra) {
-                const b = melhorMercado(s2);
-                opcoes.push({ tipo:'seq2', gatilho: pen.ft + '>' + ult.ft, mercado: b.m, pct: b.p, amostra: s2.n });
-              }
-            }
-          }
-          if (!opcoes.length) continue;
-          // ganha a maior confiança; empate → maior amostra
-          opcoes.sort((a, b) => b.pct - a.pct || b.amostra - a.amostra);
-          const win = opcoes[0];
-          if (win.pct < minConf) continue;
-          cands.push({ slot:+slot, gatilho: win.gatilho, tipo: win.tipo, mercado: win.mercado, pct: win.pct, amostra: win.amostra, hora_alvo: horaAlvo });
-        }
-
-        // top N por confiança, exibido em ordem de slot
-        cands.sort((a,b) => b.pct - a.pct || b.amostra - a.amostra);
-        out[lg] = cands.slice(0, topN).sort((a,b) => a.slot - b.slot);
-      }
+      const porLiga = await carregarPorLigaSlot(db, tabela, horas);
+      const out = calcularEntradas(porLiga, clockOffsetMs, { topN, minAmostra, minConf });
 
       // hora alvo dominante (a mais frequente entre todas as entradas) p/ o banner
       const contHora = {};
@@ -261,6 +377,76 @@ module.exports = function (db, tabela, clockOffsetMs = 0) {
       res.status(500).json({ error: e.message });
     }
   });
+
+  // ── GET /especial/ao-vivo ───────────────────────────────────────
+  // Foto TRAVADA da hora atual (gravada no banco na virada). O AO VIVO
+  // lê daqui em vez de recalcular → não oscila, sobrevive a F5, igual em
+  // qualquer PC. Inclui resultado/acerto se a hora já foi conferida.
+  const provedor = tabela === 'virturia_resultados_b365' ? 'bet365' : 'betano';
+  router.get('/especial/ao-vivo', auth, async (req, res) => {
+    try {
+      await initSnapTable(db);
+      const agora = new Date(Date.now() + clockOffsetMs);
+      const horaViva = agora.getUTCHours();
+      const data = agora.toISOString().slice(0, 10);
+      const { rows } = await db.query(`
+        SELECT liga, slot, gatilho, tipo, mercado, pct, amostra, resultado, acerto
+        FROM virturia_especial_snapshot
+        WHERE provedor=$1 AND data=$2 AND hora_alvo=$3
+        ORDER BY liga, slot
+      `, [provedor, data, horaViva]);
+      const ligas = {};
+      for (const r of rows) {
+        (ligas[r.liga] = ligas[r.liga] || []).push({
+          slot: r.slot, gatilho: r.gatilho, tipo: r.tipo, mercado: r.mercado,
+          pct: r.pct, amostra: r.amostra, hora_alvo: horaViva,
+          resultado: r.resultado, acerto: r.acerto
+        });
+      }
+      res.json({ ok: true, hora_alvo: horaViva, ligas });
+    } catch (e) {
+      console.error('[especial/ao-vivo]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── GET /especial/historico?horas=48 ────────────────────────────
+  // Placar acumulado (verde/vermelho) das fotos das últimas N horas.
+  router.get('/especial/historico', auth, async (req, res) => {
+    try {
+      await initSnapTable(db);
+      const horas = parseInt(req.query.horas) || 48;
+      const desde = new Date(Date.now() - horas * 3600000).toISOString();
+      const { rows } = await db.query(`
+        SELECT data, hora_alvo, liga, slot, gatilho, tipo, mercado, pct, amostra, resultado, acerto, criado_em
+        FROM virturia_especial_snapshot
+        WHERE provedor=$1 AND criado_em >= $2
+        ORDER BY criado_em DESC, liga, slot
+      `, [provedor, desde]);
+      const conf = rows.filter(r => r.acerto !== null);
+      const greens = conf.filter(r => r.acerto === true).length;
+      res.json({
+        ok: true,
+        total: rows.length,
+        conferidas: conf.length,
+        greens, reds: conf.length - greens,
+        pct: conf.length ? Math.round(greens * 100 / conf.length) : null,
+        entradas: rows
+      });
+    } catch (e) {
+      console.error('[especial/historico]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Agendadores em background (1 por provedor): tira a foto da hora (trava)
+  // e confere os acertos contra a Matrix. Aditivo — não afeta as rotas acima.
+  initSnapTable(db).then(() => {
+    snapshotHora(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-snap]', e.message));
+    conferirSnapshots(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-conf]', e.message));
+  }).catch(e => console.error('[especial-snap init]', e.message));
+  setInterval(() => snapshotHora(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-snap]', e.message)), 60 * 1000);
+  setInterval(() => conferirSnapshots(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-conf]', e.message)), 5 * 60 * 1000);
 
   return router;
 };
