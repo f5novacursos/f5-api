@@ -121,9 +121,10 @@ function entradaDoSlot(slot, arr, idxGat, stat1, stat2, clockOffsetMs, minAmostr
 }
 
 // Calcula as entradas por liga (top N por confiança, em ordem de slot).
-// Se horaAlvoAlvo != null, o gatilho de cada slot é o ÚLTIMO jogo cujo hora_alvo
-// === horaAlvoAlvo (foto fiel da hora — independe do minuto em que roda).
-function calcularEntradas(porLiga, clockOffsetMs, { topN, minAmostra, minConf, horaAlvoAlvo = null }) {
+// Se gatilhoHora != null, o gatilho de cada slot é o jogo daquela hora local
+// (e data, se gatilhoData != null) — foto fiel, independe do minuto e permite
+// reconstruir qualquer hora passada. Sem gatilhoHora: usa o último jogo (live).
+function calcularEntradas(porLiga, clockOffsetMs, { topN, minAmostra, minConf, gatilhoHora = null, gatilhoData = null }) {
   const out = {};
   for (const lg in porLiga) {
     const slots = porLiga[lg];
@@ -132,11 +133,12 @@ function calcularEntradas(porLiga, clockOffsetMs, { topN, minAmostra, minConf, h
     for (const slot in slots) {
       const arr = slots[slot];
       let idxGat = arr.length - 1;
-      if (horaAlvoAlvo != null) {
+      if (gatilhoHora != null) {
         idxGat = -1;
         for (let i = arr.length - 1; i >= 0; i--) {
-          const ha = (new Date(arr[i].ts + clockOffsetMs).getUTCHours() + 1) % 24;
-          if (ha === horaAlvoAlvo) { idxGat = i; break; }
+          const d = new Date(arr[i].ts + clockOffsetMs);
+          if (d.getUTCHours() === gatilhoHora &&
+              (gatilhoData == null || d.toISOString().slice(0, 10) === gatilhoData)) { idxGat = i; break; }
         }
         if (idxGat < 0) continue;
       }
@@ -185,21 +187,30 @@ function initSnapTable(db) {
   return _snapTableReady;
 }
 
-// Grava a foto da hora AO VIVO atual — só a 1ª escrita da hora vale (trava).
-async function snapshotHora(db, tabela, clockOffsetMs, provedor) {
-  await initSnapTable(db);
-  const agora = new Date(Date.now() + clockOffsetMs);
-  const horaViva = agora.getUTCHours();
-  const data = agora.toISOString().slice(0, 10);
-  // Já fotografada? então não recalcula (mantém a foto travada e barato por minuto)
+// Data/hora local do provedor a partir de um timestamp
+function dataHoraProvedor(ts, clockOffsetMs) {
+  const d = new Date(ts + clockOffsetMs);
+  return { data: d.toISOString().slice(0, 10), hora: d.getUTCHours() };
+}
+
+// Grava a foto de UMA hora-alvo (atual ou passada). Só a 1ª escrita vale (trava).
+// porLigaCache: reaproveita a carga do banco quando chamado em lote (backfill).
+async function gravarFotoHora(db, tabela, clockOffsetMs, provedor, alvoData, alvoHora, porLigaCache) {
   const { rows: ex } = await db.query(
     `SELECT 1 FROM virturia_especial_snapshot WHERE provedor=$1 AND data=$2 AND hora_alvo=$3 LIMIT 1`,
-    [provedor, data, horaViva]
+    [provedor, alvoData, alvoHora]
   );
-  if (ex.length) return;
-  const porLiga = await carregarPorLigaSlot(db, tabela, SNAP_HORAS);
+  if (ex.length) return 0; // já fotografada → mantém travada
+  // gatilho = hora anterior (a célula de baixo); vira o dia se alvo for 0h
+  const gatilhoHora = (alvoHora + 23) % 24;
+  let gatilhoData = alvoData;
+  if (alvoHora === 0) {
+    const d = new Date(alvoData + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - 1);
+    gatilhoData = d.toISOString().slice(0, 10);
+  }
+  const porLiga = porLigaCache || await carregarPorLigaSlot(db, tabela, SNAP_HORAS);
   const ligas = calcularEntradas(porLiga, clockOffsetMs, {
-    topN: SNAP_TOP, minAmostra: SNAP_AMOSTRA, minConf: SNAP_CONF, horaAlvoAlvo: horaViva
+    topN: SNAP_TOP, minAmostra: SNAP_AMOSTRA, minConf: SNAP_CONF, gatilhoHora, gatilhoData
   });
   let n = 0;
   for (const lg in ligas) {
@@ -209,11 +220,33 @@ async function snapshotHora(db, tabela, clockOffsetMs, provedor) {
           (provedor, data, hora_alvo, liga, slot, gatilho, tipo, mercado, pct, amostra)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
         ON CONFLICT (provedor, data, hora_alvo, liga, slot) DO NOTHING
-      `, [provedor, data, horaViva, lg, e.slot, e.gatilho, e.tipo, e.mercado, e.pct, e.amostra]);
+      `, [provedor, alvoData, alvoHora, lg, e.slot, e.gatilho, e.tipo, e.mercado, e.pct, e.amostra]);
       n += r.rowCount;
     }
   }
-  if (n) console.log(`[especial-snap ${provedor}] foto gravada — ${data} ${horaViva}h (${n} entradas)`);
+  if (n) console.log(`[especial-snap ${provedor}] foto ${alvoData} ${alvoHora}h (${n} entradas)`);
+  return n;
+}
+
+// Foto da hora atual (chamado a cada minuto — barato após a 1ª por causa do exists)
+async function snapshotHora(db, tabela, clockOffsetMs, provedor) {
+  await initSnapTable(db);
+  const { data, hora } = dataHoraProvedor(Date.now(), clockOffsetMs);
+  await gravarFotoHora(db, tabela, clockOffsetMs, provedor, data, hora);
+}
+
+// Reconstrói as fotos das últimas N horas a partir do banco (1x no boot).
+// Idempotente: horas já gravadas não são tocadas (ON CONFLICT / exists).
+async function backfillSnapshots(db, tabela, clockOffsetMs, provedor, horasAtras = 48) {
+  await initSnapTable(db);
+  const porLiga = await carregarPorLigaSlot(db, tabela, SNAP_HORAS); // carrega 1x e reusa
+  let total = 0;
+  for (let i = 1; i <= horasAtras; i++) {
+    const { data, hora } = dataHoraProvedor(Date.now() - i * 3600000, clockOffsetMs);
+    try { total += await gravarFotoHora(db, tabela, clockOffsetMs, provedor, data, hora, porLiga); }
+    catch (e) { console.error('[especial-backfill]', e.message); }
+  }
+  if (total) console.log(`[especial-backfill ${provedor}] reconstruiu ${total} entradas das últimas ${horasAtras}h`);
 }
 
 // Confere as fotos ainda não avaliadas contra o resultado real da Matrix.
@@ -441,9 +474,11 @@ module.exports = function (db, tabela, clockOffsetMs = 0) {
 
   // Agendadores em background (1 por provedor): tira a foto da hora (trava)
   // e confere os acertos contra a Matrix. Aditivo — não afeta as rotas acima.
-  initSnapTable(db).then(() => {
-    snapshotHora(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-snap]', e.message));
-    conferirSnapshots(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-conf]', e.message));
+  initSnapTable(db).then(async () => {
+    await snapshotHora(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-snap]', e.message));
+    // reconstrói as últimas 48h pra o histórico já nascer cheio (idempotente)
+    await backfillSnapshots(db, tabela, clockOffsetMs, provedor, 48).catch(e => console.error('[especial-backfill]', e.message));
+    await conferirSnapshots(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-conf]', e.message));
   }).catch(e => console.error('[especial-snap init]', e.message));
   setInterval(() => snapshotHora(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-snap]', e.message)), 60 * 1000);
   setInterval(() => conferirSnapshots(db, tabela, clockOffsetMs, provedor).catch(e => console.error('[especial-conf]', e.message)), 5 * 60 * 1000);
