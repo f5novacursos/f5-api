@@ -5,6 +5,11 @@ const db = require('../db');
 db.query("ALTER TABLE turmas ADD COLUMN IF NOT EXISTS foto VARCHAR(500)")
   .catch(err => console.error('[turmas] migration foto:', err.message));
 
+// Auto-migration: JID do grupo de WhatsApp da turma (preenchido ao criar o grupo
+// via Evolution). Sem isso não dá para postar resumo/PDF da aula no grupo depois.
+db.query("ALTER TABLE turmas ADD COLUMN IF NOT EXISTS group_jid VARCHAR(120)")
+  .catch(err => console.error('[turmas] migration group_jid:', err.message));
+
 // GET /api/turmas — listar turmas (com filtro opcional por status)
 router.get('/', async (req, res, next) => {
   try {
@@ -143,6 +148,20 @@ router.patch('/:id/vagas', async (req, res, next) => {
       'UPDATE turmas SET vagas_ocupadas=$1 WHERE id=$2 RETURNING *',
       [vagas_ocupadas, req.params.id]
     );
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// PATCH /api/turmas/:id/group-jid — gravar o JID do grupo de WhatsApp da turma.
+// Chamado pelo painel logo após o Evolution criar o grupo (criarGrupoWhatsApp).
+router.patch('/:id/group-jid', async (req, res, next) => {
+  try {
+    const { group_jid } = req.body;
+    const { rows } = await db.query(
+      'UPDATE turmas SET group_jid=$1 WHERE id=$2 RETURNING *',
+      [group_jid || null, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Turma nao encontrada' });
     res.json(rows[0]);
   } catch (err) { next(err); }
 });

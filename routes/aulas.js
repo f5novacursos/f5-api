@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
 
-// Auto-migration: cria tabelas se não existirem
+// Auto-migration: banco de aulas reutilizável (repositório de planos + PDFs por título)
 db.query(`
   CREATE TABLE IF NOT EXISTS aulas (
     id SERIAL PRIMARY KEY,
@@ -12,31 +12,27 @@ db.query(`
   )
 `).catch(err => console.error('[aulas] migration aulas:', err.message));
 
-db.query(`
-  CREATE TABLE IF NOT EXISTS frequencia_aulas (
-    id SERIAL PRIMARY KEY,
-    turma_id INTEGER NOT NULL,
-    aula_id INTEGER,
-    data DATE NOT NULL,
-    aula_numero INTEGER,
-    titulo VARCHAR(200),
-    topicos TEXT,
-    cancelada BOOLEAN DEFAULT FALSE,
-    obs VARCHAR(500),
-    criado_em TIMESTAMP DEFAULT NOW(),
-    UNIQUE(turma_id, data)
-  )
-`).catch(err => console.error('[aulas] migration frequencia_aulas:', err.message));
+// PDF reutilizável do banco de aulas (escolhido por título na grade de frequência)
+db.query("ALTER TABLE aulas ADD COLUMN IF NOT EXISTS pdf_url VARCHAR(500)")
+  .catch(err => console.error('[aulas] migration pdf_url:', err.message));
 
+// Frequência foi consolidada em routes/frequencia.js (tabelas freq_aulas / freq_presencas).
+// As tabelas paralelas frequencia_aulas / frequencia_presenca que viviam aqui duplicavam
+// aquela lógica — derrubadas para não confundir, MAS só se estiverem vazias (preserva
+// qualquer dado que por acaso exista).
 db.query(`
-  CREATE TABLE IF NOT EXISTS frequencia_presenca (
-    id SERIAL PRIMARY KEY,
-    frequencia_aula_id INTEGER NOT NULL REFERENCES frequencia_aulas(id) ON DELETE CASCADE,
-    aluno_id INTEGER NOT NULL,
-    presente BOOLEAN DEFAULT FALSE,
-    UNIQUE(frequencia_aula_id, aluno_id)
-  )
-`).catch(err => console.error('[aulas] migration frequencia_presenca:', err.message));
+  DO $$
+  BEGIN
+    IF to_regclass('public.frequencia_presenca') IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM frequencia_presenca LIMIT 1) THEN
+      DROP TABLE frequencia_presenca;
+    END IF;
+    IF to_regclass('public.frequencia_aulas') IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM frequencia_aulas LIMIT 1) THEN
+      DROP TABLE frequencia_aulas;
+    END IF;
+  END $$;
+`).catch(err => console.error('[aulas] drop duplicadas (se vazias):', err.message));
 
 // ── AULAS (banco de conteúdo reutilizável) ─────────────────────────
 
@@ -56,10 +52,10 @@ router.get('/', async (req, res, next) => {
 // POST /api/aulas
 router.post('/', async (req, res, next) => {
   try {
-    const { titulo, topicos, curso_id } = req.body;
+    const { titulo, topicos, curso_id, pdf_url } = req.body;
     const { rows } = await db.query(
-      'INSERT INTO aulas (titulo, topicos, curso_id) VALUES ($1,$2,$3) RETURNING *',
-      [titulo, topicos || null, curso_id || null]
+      'INSERT INTO aulas (titulo, topicos, curso_id, pdf_url) VALUES ($1,$2,$3,$4) RETURNING *',
+      [titulo, topicos || null, curso_id || null, pdf_url || null]
     );
     res.json(rows[0]);
   } catch(e){ next(e); }
@@ -68,10 +64,10 @@ router.post('/', async (req, res, next) => {
 // PUT /api/aulas/:id
 router.put('/:id', async (req, res, next) => {
   try {
-    const { titulo, topicos, curso_id } = req.body;
+    const { titulo, topicos, curso_id, pdf_url } = req.body;
     const { rows } = await db.query(
-      'UPDATE aulas SET titulo=$1, topicos=$2, curso_id=$3 WHERE id=$4 RETURNING *',
-      [titulo, topicos || null, curso_id || null, req.params.id]
+      'UPDATE aulas SET titulo=$1, topicos=$2, curso_id=$3, pdf_url=COALESCE($4,pdf_url) WHERE id=$5 RETURNING *',
+      [titulo, topicos || null, curso_id || null, pdf_url || null, req.params.id]
     );
     res.json(rows[0]);
   } catch(e){ next(e); }
@@ -85,65 +81,7 @@ router.delete('/:id', async (req, res, next) => {
   } catch(e){ next(e); }
 });
 
-// ── FREQUÊNCIA POR TURMA ───────────────────────────────────────────
-
-// GET /api/aulas/frequencia/:turma_id — retorna todas as aulas + presença da turma
-router.get('/frequencia/:turma_id', async (req, res, next) => {
-  try {
-    const tid = req.params.turma_id;
-    const { rows: aulas } = await db.query(
-      'SELECT * FROM frequencia_aulas WHERE turma_id=$1 ORDER BY data ASC',
-      [tid]
-    );
-    const { rows: presencas } = await db.query(
-      `SELECT fp.* FROM frequencia_presenca fp
-       JOIN frequencia_aulas fa ON fa.id = fp.frequencia_aula_id
-       WHERE fa.turma_id=$1`,
-      [tid]
-    );
-    res.json({ aulas, presencas });
-  } catch(e){ next(e); }
-});
-
-// POST /api/aulas/frequencia — cria ou atualiza uma aula na grade de frequência
-router.post('/frequencia', async (req, res, next) => {
-  try {
-    const { turma_id, data, aula_numero, titulo, topicos, cancelada, obs, aula_id } = req.body;
-    const { rows } = await db.query(
-      `INSERT INTO frequencia_aulas (turma_id, aula_id, data, aula_numero, titulo, topicos, cancelada, obs)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-       ON CONFLICT (turma_id, data) DO UPDATE SET
-         aula_id=EXCLUDED.aula_id, aula_numero=EXCLUDED.aula_numero,
-         titulo=EXCLUDED.titulo, topicos=EXCLUDED.topicos,
-         cancelada=EXCLUDED.cancelada, obs=EXCLUDED.obs
-       RETURNING *`,
-      [turma_id, aula_id || null, data, aula_numero || null, titulo || null, topicos || null, cancelada || false, obs || null]
-    );
-    res.json(rows[0]);
-  } catch(e){ next(e); }
-});
-
-// POST /api/aulas/presenca — marca/desmarca presença de um aluno
-router.post('/presenca', async (req, res, next) => {
-  try {
-    const { frequencia_aula_id, aluno_id, presente } = req.body;
-    const { rows } = await db.query(
-      `INSERT INTO frequencia_presenca (frequencia_aula_id, aluno_id, presente)
-       VALUES ($1,$2,$3)
-       ON CONFLICT (frequencia_aula_id, aluno_id) DO UPDATE SET presente=EXCLUDED.presente
-       RETURNING *`,
-      [frequencia_aula_id, aluno_id, presente]
-    );
-    res.json(rows[0]);
-  } catch(e){ next(e); }
-});
-
-// DELETE /api/aulas/frequencia/:id — remove uma aula da grade
-router.delete('/frequencia/:id', async (req, res, next) => {
-  try {
-    await db.query('DELETE FROM frequencia_aulas WHERE id=$1', [req.params.id]);
-    res.json({ ok: true });
-  } catch(e){ next(e); }
-});
+// NOTA: a frequência por turma vive em routes/frequencia.js (/api/frequencia).
+// As rotas /frequencia e /presenca que existiam aqui foram removidas na consolidação.
 
 module.exports = router;
