@@ -128,6 +128,7 @@ function calcularEntradas(porLiga, clockOffsetMs, { topN, minAmostra, minConf, g
   const out = {};
   for (const lg in porLiga) {
     const slots = porLiga[lg];
+    const grid = Object.keys(slots).map(Number).sort((a, b) => a - b);
     const { stat1, stat2 } = calcStats(slots);
     const cands = [];
     for (const slot in slots) {
@@ -143,12 +144,11 @@ function calcularEntradas(porLiga, clockOffsetMs, { topN, minAmostra, minConf, g
         if (idxGat < 0) continue;
       }
       const e = entradaDoSlot(slot, arr, idxGat, stat1, stat2, clockOffsetMs, minAmostra, minConf);
-      if (e) cands.push(e);
+      if (e) { aplicarForcaColuna(e, slots, grid); cands.push(e); }
     }
     // dedupe Martingale: processa por ORDEM DE SLOT — a entrada mais cedo ANCORA o
     // martingale e cobre os 2 slots seguintes do mesmo mercado; as de dentro da janela
     // saem (ex: 38' UNDER já cobre 41' UNDER, que é seu 2º tiro). Evita redundância.
-    const grid = Object.keys(slots).map(Number).sort((a, b) => a - b);
     const cobertos = new Set();
     const ancoras = [];
     for (const c of cands.slice().sort((a, b) => a.slot - b.slot)) {
@@ -169,6 +169,36 @@ function mercadoBateu(mercado, a, b) {
   if (mercado.includes('UNDER')) return g <= 2;
   if (mercado.includes('OVER'))  return g >= 3;
   return a > 0 && b > 0; // AMBAS SIM
+}
+
+// ── Força da coluna (reforço Martingale) ────────────────────────────
+// Espelha a "Análise do Range" da Matrix (index.html → colStats/updateFloatCard):
+// mede quão VERDE pro mercado da entrada estão as 3 colunas onde o Martingale joga
+// (slot S + os 2 seguintes), agrupando as células (pooled), e usa a base do mercado
+// na liga como régua justa (Under/Over/Ambas têm taxas-base bem diferentes).
+// Coluna FRIA (abaixo da base) DERRUBA a confiança; coluna saudável não mexe nada
+// (penalidade só negativa) → o filtro só remove entrada arriscada, nunca promove fraca.
+const PESO_COLUNA = 0.6;       // pts de confiança descontados por pt de frieza vs base
+const MIN_AMOSTRA_COL = 8;     // mín. de células nas 3 colunas p/ confiar na força
+
+function aplicarForcaColuna(e, slots, grid) {
+  const gi = grid.indexOf(e.slot);
+  if (gi < 0) return;
+  let hit = 0, tot = 0;                          // 3 colunas do Martingale (pooled)
+  for (let k = 0; k < 3; k++) {
+    const c = grid[gi + k];
+    if (c == null) continue;
+    for (const j of (slots[c] || [])) { tot++; if (mercadoBateu(e.mercado, j.a, j.b)) hit++; }
+  }
+  let bh = 0, bt = 0;                            // base do mercado na liga inteira
+  for (const sk in slots) for (const j of slots[sk]) { bt++; if (mercadoBateu(e.mercado, j.a, j.b)) bh++; }
+  e.forca       = tot ? Math.round(hit * 100 / tot) : null;
+  e.amostra_col = tot;
+  e.base        = bt ? Math.round(bh * 100 / bt) : null;
+  if (e.forca != null && e.base != null && tot >= MIN_AMOSTRA_COL) {
+    const saude = Math.min(0, e.forca - e.base); // só frieza penaliza
+    e.pct = Math.max(0, Math.round(e.pct + saude * PESO_COLUNA));
+  }
 }
 
 // ── Snapshot da aba Especial (trava AO VIVO + histórico de acerto) ──
@@ -203,6 +233,7 @@ function initSnapTable(db) {
     await db.query(`ALTER TABLE virturia_especial_snapshot ADD COLUMN IF NOT EXISTS metodo VARCHAR(8)`);
     await db.query(`ALTER TABLE virturia_especial_snapshot ALTER COLUMN resultado TYPE VARCHAR(16)`);
     await db.query(`ALTER TABLE virturia_especial_snapshot ADD COLUMN IF NOT EXISTS origem VARCHAR(5)`);
+    await db.query(`ALTER TABLE virturia_especial_snapshot ADD COLUMN IF NOT EXISTS forca INTEGER`);
   })().catch(e => { _snapTableReady = null; throw e; });
   return _snapTableReady;
 }
@@ -237,10 +268,10 @@ async function gravarFotoHora(db, tabela, clockOffsetMs, provedor, alvoData, alv
     for (const e of ligas[lg]) {
       const r = await db.query(`
         INSERT INTO virturia_especial_snapshot
-          (provedor, data, hora_alvo, liga, slot, gatilho, tipo, mercado, pct, amostra, origem)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          (provedor, data, hora_alvo, liga, slot, gatilho, tipo, mercado, pct, amostra, origem, forca)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
         ON CONFLICT (provedor, data, hora_alvo, liga, slot) DO NOTHING
-      `, [provedor, alvoData, alvoHora, lg, e.slot, e.gatilho, e.tipo, e.mercado, e.pct, e.amostra, origem]);
+      `, [provedor, alvoData, alvoHora, lg, e.slot, e.gatilho, e.tipo, e.mercado, e.pct, e.amostra, origem, e.forca ?? null]);
       n += r.rowCount;
     }
   }
@@ -464,7 +495,7 @@ module.exports = function (db, tabela, clockOffsetMs = 0) {
       const horaViva = agora.getUTCHours();
       const data = agora.toISOString().slice(0, 10);
       const { rows } = await db.query(`
-        SELECT liga, slot, gatilho, tipo, mercado, pct, amostra, resultado, acerto
+        SELECT liga, slot, gatilho, tipo, mercado, pct, amostra, resultado, acerto, forca
         FROM virturia_especial_snapshot
         WHERE provedor=$1 AND data=$2 AND hora_alvo=$3
         ORDER BY liga, slot
@@ -473,7 +504,7 @@ module.exports = function (db, tabela, clockOffsetMs = 0) {
       for (const r of rows) {
         (ligas[r.liga] = ligas[r.liga] || []).push({
           slot: r.slot, gatilho: r.gatilho, tipo: r.tipo, mercado: r.mercado,
-          pct: r.pct, amostra: r.amostra, hora_alvo: horaViva,
+          pct: r.pct, amostra: r.amostra, hora_alvo: horaViva, forca: r.forca,
           resultado: r.resultado, acerto: r.acerto
         });
       }
@@ -492,7 +523,7 @@ module.exports = function (db, tabela, clockOffsetMs = 0) {
       const horas = parseInt(req.query.horas) || 48;
       const desde = new Date(Date.now() - horas * 3600000).toISOString();
       const { rows } = await db.query(`
-        SELECT data, hora_alvo, liga, slot, gatilho, tipo, mercado, pct, amostra, resultado, acerto, criado_em
+        SELECT data, hora_alvo, liga, slot, gatilho, tipo, mercado, pct, amostra, resultado, acerto, forca, criado_em
         FROM virturia_especial_snapshot
         WHERE provedor=$1 AND criado_em >= $2 AND origem = 'vivo'
         ORDER BY criado_em DESC, liga, slot
