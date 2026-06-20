@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
+const lixeira = require('../lib/lixeira');
 
 /* ══════════════════════════════════════════════════════════════
    AUTO-MIGRATION — cria tabela clientes_web se não existir
@@ -155,8 +156,14 @@ router.put('/portfolio/:id', async (req, res) => {
 router.delete('/portfolio/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { rowCount } = await db.query('DELETE FROM clientes_web WHERE id = $1', [id]);
-    if (!rowCount) return res.status(404).json({ erro: 'Cliente não encontrado.' });
+    const { rows } = await db.query('DELETE FROM clientes_web WHERE id = $1 RETURNING *', [id]);
+    if (!rows.length) return res.status(404).json({ erro: 'Cliente não encontrado.' });
+    const c = rows[0];
+    await lixeira.guardar({
+      entidade: 'cliente_web', ref_id: c.id, por: req,
+      rotulo: `Cliente web ${c.nome || c.empresa || ''}`.trim(),
+      dados: c,
+    });
     res.json({ ok: true });
   } catch (err) {
     console.error('[DELETE /api/portfolio/:id]', err.message);

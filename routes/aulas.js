@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const db = require('../db');
+const lixeira = require('../lib/lixeira');
 
 // Auto-migration: banco de aulas reutilizável (repositório de planos + PDFs por título)
 db.query(`
@@ -73,10 +74,19 @@ router.put('/:id', async (req, res, next) => {
   } catch(e){ next(e); }
 });
 
-// DELETE /api/aulas/:id
+// DELETE /api/aulas/:id — manda a aula (banco de aulas) pra Lixeira
 router.delete('/:id', async (req, res, next) => {
   try {
-    await db.query('DELETE FROM aulas WHERE id=$1', [req.params.id]);
+    const { rows } = await db.query('SELECT * FROM aulas WHERE id=$1', [req.params.id]);
+    if (rows.length) {
+      const a = rows[0];
+      await lixeira.guardar({
+        entidade: 'aula', ref_id: a.id, por: req,
+        rotulo: `Aula ${a.titulo || ''}`.trim(),
+        dados: a,
+      });
+      await db.query('DELETE FROM aulas WHERE id=$1', [a.id]);
+    }
     res.json({ ok: true });
   } catch(e){ next(e); }
 });

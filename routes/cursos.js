@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const db     = require('../db');
+const lixeira = require('../lib/lixeira');
 
 /* Auto-migration: cria tabela e semeia dados iniciais */
 (async () => {
@@ -76,15 +77,21 @@ router.put('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-/* DELETE /api/cursos/:id — soft delete */
+/* DELETE /api/cursos/:id — soft delete (ativo=false) + registra na Lixeira */
 router.delete('/:id', async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      'UPDATE cursos SET ativo=false WHERE id=$1 RETURNING nome',
+      'UPDATE cursos SET ativo=false WHERE id=$1 AND ativo=true RETURNING *',
       [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Curso nao encontrado' });
-    res.json({ ok: true, nome: rows[0].nome });
+    const curso = rows[0];
+    await lixeira.guardar({
+      entidade: 'curso', ref_id: curso.id, por: req,
+      rotulo: `Curso ${curso.nome || ''}`.trim(),
+      dados: curso,
+    });
+    res.json({ ok: true, nome: curso.nome });
   } catch (err) { next(err); }
 });
 

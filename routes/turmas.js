@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const db = require('../db');
+const lixeira = require('../lib/lixeira');
 
 // Auto-migration: garante que a coluna foto existe na tabela turmas
 db.query("ALTER TABLE turmas ADD COLUMN IF NOT EXISTS foto VARCHAR(500)")
@@ -166,10 +167,30 @@ router.patch('/:id/group-jid', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// DELETE /api/turmas/:id — excluir turma
+// DELETE /api/turmas/:id — manda a turma (e os alunos dentro dela) pra Lixeira
 router.delete('/:id', async (req, res, next) => {
   try {
-    await db.query('DELETE FROM turmas WHERE id = $1', [req.params.id]);
+    const id = parseInt(req.params.id);
+    const { rows: t } = await db.query('SELECT * FROM turmas WHERE id=$1', [id]);
+    if (!t.length) return res.json({ ok: true });
+    const turma = t[0];
+    const { rows: alunos } = await db.query('SELECT * FROM alunos WHERE turma_id=$1', [id]);
+    // frequência da turma (apagada em cascata no banco) — fotografada p/ restauro completo
+    const { rows: freqAulas } = await db.query('SELECT * FROM freq_aulas WHERE turma_id=$1', [id]);
+    const { rows: freqPres } = freqAulas.length
+      ? await db.query('SELECT * FROM freq_presencas WHERE aula_id = ANY($1)', [freqAulas.map(a => a.id)])
+      : { rows: [] };
+
+    // fotografa turma + alunos + frequência juntos antes de apagar
+    await lixeira.guardar({
+      entidade: 'turma', ref_id: id, por: req,
+      rotulo: `Turma ${turma.codigo || ''} — ${turma.nome || turma.turma || ''}`.trim()
+              + (alunos.length ? ` (${alunos.length} aluno${alunos.length > 1 ? 's' : ''})` : ''),
+      dados: { _turma: turma, _alunos: alunos, _freq_aulas: freqAulas, _freq_presencas: freqPres },
+    });
+
+    await db.query('DELETE FROM alunos WHERE turma_id=$1', [id]);
+    await db.query('DELETE FROM turmas WHERE id=$1', [id]);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

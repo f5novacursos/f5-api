@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const db = require('../db');
+const lixeira = require('../lib/lixeira');
 
 /* Auto-migration — adiciona coluna tem_notebook se não existir */
 db.query("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS tem_notebook BOOLEAN DEFAULT false")
@@ -149,15 +150,20 @@ router.patch('/:id/pagamento', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// DELETE /api/alunos/:id
+// DELETE /api/alunos/:id — manda o aluno pra Lixeira
 router.delete('/:id', async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT turma_id FROM alunos WHERE id=$1', [req.params.id]);
+    const { rows } = await db.query('SELECT * FROM alunos WHERE id=$1', [req.params.id]);
     if (rows.length) {
-      const turma_id = rows[0].turma_id;
-      await db.query('DELETE FROM alunos WHERE id=$1', [req.params.id]);
-      if (turma_id) {
-        await db.query('UPDATE turmas SET vagas_ocupadas = vagas_ocupadas - 1 WHERE id=$1 AND vagas_ocupadas > 0', [turma_id]);
+      const aluno = rows[0];
+      await lixeira.guardar({
+        entidade: 'aluno', ref_id: aluno.id, por: req,
+        rotulo: `Aluno ${aluno.nome || ''}`.trim(),
+        dados: aluno,
+      });
+      await db.query('DELETE FROM alunos WHERE id=$1', [aluno.id]);
+      if (aluno.turma_id) {
+        await db.query('UPDATE turmas SET vagas_ocupadas = vagas_ocupadas - 1 WHERE id=$1 AND vagas_ocupadas > 0', [aluno.turma_id]);
       }
     }
     res.json({ ok: true });

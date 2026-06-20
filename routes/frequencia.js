@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../db');
 const fs = require('fs');
 const path = require('path');
+const lixeira = require('../lib/lixeira');
 
 // ── Auto-migration ─────────────────────────────────────────────────────────
 (async () => {
@@ -140,7 +141,18 @@ router.put('/aulas/:aula_id', async (req, res, next) => {
 // ── DELETE /api/frequencia/aulas/:aula_id ────────────────────────────────────
 router.delete('/aulas/:aula_id', async (req, res, next) => {
   try {
-    await db.query(`DELETE FROM freq_aulas WHERE id=$1`, [parseInt(req.params.aula_id)]);
+    const id = parseInt(req.params.aula_id);
+    const { rows } = await db.query('SELECT * FROM freq_aulas WHERE id=$1', [id]);
+    if (rows.length) {
+      const aula = rows[0];
+      const { rows: pres } = await db.query('SELECT * FROM freq_presencas WHERE aula_id=$1', [id]);
+      await lixeira.guardar({
+        entidade: 'freq_aula', ref_id: id, por: req,
+        rotulo: `Aula ${aula.numero || ''} — ${aula.titulo || ''} (frequência)`.trim(),
+        dados: { _aula: aula, _presencas: pres },
+      });
+    }
+    await db.query(`DELETE FROM freq_aulas WHERE id=$1`, [id]);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

@@ -143,6 +143,32 @@ async function webhookInfinitePay(req, res) {
 
     if (!order_nsu) return res.status(400).json({ error: 'order_nsu ausente' });
 
+    // ── FLUXO EAD (order_nsu começa com 'ead-mat-') ──────────────
+    if (String(order_nsu).startsWith('ead-mat-')) {
+      const { rows: mats } = await db.query(
+        'SELECT * FROM ead_matriculas WHERE order_nsu=$1',
+        [order_nsu]
+      );
+
+      if (!mats.length) {
+        console.warn('[Webhook EAD] Matrícula não encontrada para order_nsu:', order_nsu);
+        return res.status(200).json({ ok: true });
+      }
+
+      await db.query(
+        `UPDATE ead_matriculas SET
+           status          = 'ativa',
+           transaction_nsu = $1,
+           receipt_url     = $2
+         WHERE order_nsu = $3`,
+        [transaction_nsu || '', receipt_url || '', order_nsu]
+      );
+
+      console.log(`[Webhook EAD] Matrícula ativada - order_nsu: ${order_nsu}`);
+      return res.status(200).json({ ok: true });
+    }
+
+    // ── FLUXO PRESENCIAL (aluno acadêmico) ───────────────────────
     const { rows } = await db.query('SELECT * FROM alunos WHERE order_nsu=$1', [order_nsu]);
     if (!rows.length) {
       console.warn('[Webhook] Aluno não encontrado para order_nsu:', order_nsu);

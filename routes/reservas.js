@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
 const https = require('https');
+const lixeira = require('../lib/lixeira');
 
 function notificarN8n(payload) {
   try {
@@ -102,10 +103,19 @@ router.post('/:id/converter', async (req, res, next) => {
   }
 });
 
-// DELETE /api/reservas/:id — excluir reserva
+// DELETE /api/reservas/:id — manda a reserva pra Lixeira
 router.delete('/:id', async (req, res, next) => {
   try {
-    await db.query('DELETE FROM reservas WHERE id=$1', [req.params.id]);
+    const { rows } = await db.query('SELECT * FROM reservas WHERE id=$1', [req.params.id]);
+    if (rows.length) {
+      const r = rows[0];
+      await lixeira.guardar({
+        entidade: 'reserva', ref_id: r.id, por: req,
+        rotulo: `Reserva ${r.nome || ''} — ${r.interesse || ''}`.trim(),
+        dados: r,
+      });
+      await db.query('DELETE FROM reservas WHERE id=$1', [r.id]);
+    }
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

@@ -25,6 +25,8 @@ app.use('/api/interessados', require('./routes/interessados'));
 app.use('/api/frequencia',  require('./routes/frequencia'));
 app.use('/api/financeiro',  require('./routes/financeiro'));
 app.use('/api/contato',     require('./routes/contato'));
+app.use('/api/ead',         require('./routes/ead'));
+app.use('/api/lixeira',     require('./routes/lixeira'));
 // Virturia: nunca cachear — dados mudam a cada minuto
 app.use('/api/virturia', (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -77,4 +79,11 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`✅  F5 API rodando na porta ${PORT}`);
   startB365(); // inicia o coletor depois que a API sobe
+
+  // Lixeira: limpa o que passou de 30 dias no boot e a cada 24h.
+  const lixeira = require('./lib/lixeira');
+  lixeira.purgarExpirados().catch(e => console.error('[lixeira] purga inicial:', e.message));
+  setInterval(() => {
+    lixeira.purgarExpirados().catch(e => console.error('[lixeira] purga diária:', e.message));
+  }, 24 * 60 * 60 * 1000);
 });
