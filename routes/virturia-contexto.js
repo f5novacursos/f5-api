@@ -144,7 +144,8 @@ function calcularEntradas(porLiga, clockOffsetMs, { topN, minAmostra, minConf, g
         if (idxGat < 0) continue;
       }
       const e = entradaDoSlot(slot, arr, idxGat, stat1, stat2, clockOffsetMs, minAmostra, minConf);
-      if (e) { aplicarForcaColuna(e, slots, grid); cands.push(e); }
+      // piso por mercado aplicado SOBRE a confiança já ajustada pela força da coluna
+      if (e) { aplicarForcaColuna(e, slots, grid); if (e.pct >= pisoDe(e.mercado, minConf)) cands.push(e); }
     }
     // dedupe Martingale: a entrada mais cedo ANCORA e CONSOME os 2 slots seguintes
     // (as 3 colunas do tiro: S, S+1, S+2) de QUALQUER mercado. Uma vez que 04' ancora
@@ -201,6 +202,15 @@ function aplicarForcaColuna(e, slots, grid) {
     e.pct = Math.max(0, Math.round(e.pct + saude * PESO_COLUNA));
   }
 }
+
+// ── Piso de confiança por mercado ───────────────────────────────────
+// AMBAS SIM tem base estrutural ~47% em todas as ligas (quase moeda). Com Martingale
+// 3 tiros o acerto vira 1-0.53^3 ≈ 85% SÓ pela taxa-base — a adjacência não prevê
+// AMBAS (o acerto real do robô, 84-87%, bate exatamente esse chão). No histórico, AMBAS
+// só fica limpo (100%) em pct>=80; abaixo disso sangra (~83-88%). Então exige barra alta:
+// joga só as melhores AMBAS. UNDER (base 58%) e OVER (base 41%) têm edge real → piso global.
+const PISO_MERCADO = { 'AMBAS SIM': 80 };
+function pisoDe(mercado, minConf) { return Math.max(minConf, PISO_MERCADO[mercado] || 0); }
 
 // ── Snapshot da aba Especial (trava AO VIVO + histórico de acerto) ──
 // Foto canônica: histórico 720h, top 6/liga, conf>=60, amostra>=8.
