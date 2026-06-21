@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
 const lixeira = require('../lib/lixeira');
+const r2 = require('../lib/r2');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const fs = require('fs');
@@ -567,6 +568,54 @@ router.get('/video/:aulaId', eadAuthMiddleware, async (req, res, next) => {
       fs.createReadStream(videoPath).pipe(res);
     }
 
+  } catch(e) { next(e); }
+});
+
+
+// ── VÍDEO VIA CLOUDFLARE R2 (URL ASSINADA) ────────────────────────────
+// GET /api/ead/video-url/:aulaId → { url } presigned (expira em minutos).
+// aula.url guarda a CHAVE do objeto no R2 (ex: "curso1/aula123.mp4").
+// A URL assinada vai direto no <video src> (resolve o <video> não mandar header).
+router.get('/video-url/:aulaId', eadAuthMiddleware, async (req, res, next) => {
+  try {
+    const { aulaId } = req.params;
+    const { rows: aulas } = await db.query(
+      `SELECT a.*, m.curso_id
+       FROM ead_aulas a JOIN ead_modulos m ON a.modulo_id = m.id
+       WHERE a.id = $1`,
+      [aulaId]
+    );
+    if (!aulas.length) return res.status(404).json({ error: 'Aula não encontrada.' });
+    const aula = aulas[0];
+
+    // Mesma checagem de acesso do /video
+    if (!aula.gratis) {
+      let matriculado = false;
+      if (req.user.role === 'admin') {
+        matriculado = true;
+      } else if (req.user.tipo === 'presencial') {
+        const { rows } = await db.query(
+          "SELECT id FROM ead_matriculas WHERE aluno_id = $1 AND curso_id = $2 AND status = 'ativa'",
+          [req.user.id, aula.curso_id]);
+        matriculado = rows.length > 0;
+      } else if (req.user.tipo === 'web') {
+        const { rows } = await db.query(
+          "SELECT id FROM ead_matriculas WHERE usuario_id = $1 AND curso_id = $2 AND status = 'ativa'",
+          [req.user.id, aula.curso_id]);
+        matriculado = rows.length > 0;
+      }
+      if (!matriculado) {
+        return res.status(403).json({ error: 'Você não possui matrícula ativa neste curso.' });
+      }
+    }
+
+    if (!aula.url) return res.status(400).json({ error: 'Aula sem vídeo cadastrado.' });
+    if (!r2.r2Configurado()) {
+      return res.status(503).json({ error: 'Armazenamento de vídeo (R2) ainda não configurado.' });
+    }
+
+    const url = r2.presignGet(aula.url, 600); // 10 min
+    res.json({ url });
   } catch(e) { next(e); }
 });
 
