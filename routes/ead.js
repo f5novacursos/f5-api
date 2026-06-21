@@ -127,6 +127,8 @@ async function initEadDatabase() {
 
   // Colunas adicionadas depois (idempotente)
   await db.query(`ALTER TABLE ead_cursos ADD COLUMN IF NOT EXISTS imagem VARCHAR(500)`);
+  // imagem pode guardar URL OU a própria imagem (data URI base64) — precisa caber
+  await db.query(`ALTER TABLE ead_cursos ALTER COLUMN imagem TYPE TEXT`);
 
   // Popular cursos iniciais se vazia
   const { rows } = await db.query('SELECT COUNT(*) FROM ead_cursos');
