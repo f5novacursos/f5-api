@@ -125,6 +125,9 @@ async function initEadDatabase() {
     )
   `);
 
+  // Colunas adicionadas depois (idempotente)
+  await db.query(`ALTER TABLE ead_cursos ADD COLUMN IF NOT EXISTS imagem VARCHAR(500)`);
+
   // Popular cursos iniciais se vazia
   const { rows } = await db.query('SELECT COUNT(*) FROM ead_cursos');
   if (parseInt(rows[0].count) === 0) {
@@ -362,13 +365,13 @@ router.get('/cursos', async (req, res, next) => {
 // POST /api/ead/cursos (Admin)
 router.post('/cursos', eadAdminMiddleware, async (req, res, next) => {
   try {
-    const { titulo, descricao, categoria, carga_horaria, preco, icone } = req.body;
+    const { titulo, descricao, categoria, carga_horaria, preco, icone, imagem } = req.body;
     if (!titulo) return res.status(400).json({ error: 'Título do curso é obrigatório.' });
 
     const { rows } = await db.query(
-      `INSERT INTO ead_cursos (titulo, descricao, categoria, carga_horaria, preco, icone) 
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [titulo, descricao || '', categoria || 'Informática', parseInt(carga_horaria) || 20, parseFloat(preco) || 0.00, icone || '💻']
+      `INSERT INTO ead_cursos (titulo, descricao, categoria, carga_horaria, preco, icone, imagem)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [titulo, descricao || '', categoria || 'Informática', parseInt(carga_horaria) || 20, parseFloat(preco) || 0.00, icone || '💻', imagem || null]
     );
     res.status(201).json(rows[0]);
   } catch(e) { next(e); }
@@ -377,17 +380,18 @@ router.post('/cursos', eadAdminMiddleware, async (req, res, next) => {
 // PUT /api/ead/cursos/:id (Admin)
 router.put('/cursos/:id', eadAdminMiddleware, async (req, res, next) => {
   try {
-    const { titulo, descricao, categoria, carga_horaria, preco, icone } = req.body;
+    const { titulo, descricao, categoria, carga_horaria, preco, icone, imagem } = req.body;
     const { rows } = await db.query(
-      `UPDATE ead_cursos SET 
-         titulo = COALESCE($1, titulo), 
-         descricao = COALESCE($2, descricao), 
-         categoria = COALESCE($3, categoria), 
-         carga_horaria = COALESCE($4, carga_horaria), 
-         preco = COALESCE($5, preco), 
-         icone = COALESCE($6, icone) 
-       WHERE id = $7 RETURNING *`,
-      [titulo, descricao, categoria, carga_horaria, preco, icone, req.params.id]
+      `UPDATE ead_cursos SET
+         titulo = COALESCE($1, titulo),
+         descricao = COALESCE($2, descricao),
+         categoria = COALESCE($3, categoria),
+         carga_horaria = COALESCE($4, carga_horaria),
+         preco = COALESCE($5, preco),
+         icone = COALESCE($6, icone),
+         imagem = COALESCE($7, imagem)
+       WHERE id = $8 RETURNING *`,
+      [titulo, descricao, categoria, carga_horaria, preco, icone, imagem, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Curso não encontrado.' });
     res.json(rows[0]);
