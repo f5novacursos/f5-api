@@ -886,5 +886,28 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
+// GET /api/ead/certificados/admin/todos — lista TODOS os certificados emitidos (Admin)
+router.get('/certificados/admin/todos', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT c.codigo, c.data_emissao, cur.titulo AS curso_titulo, cur.carga_horaria,
+              COALESCE(u.nome, a.nome) AS aluno_nome
+       FROM ead_certificados c
+       JOIN ead_matriculas m ON c.matricula_id = m.id
+       JOIN ead_cursos cur ON m.curso_id = cur.id
+       LEFT JOIN ead_usuarios u ON m.usuario_id = u.id
+       LEFT JOIN alunos a ON m.aluno_id = a.id
+       ORDER BY c.data_emissao DESC`
+    );
+    res.json(rows.map(r => ({
+      nomeAluno: r.aluno_nome || '—',
+      nomeCurso: r.curso_titulo,
+      codigo: r.codigo,
+      emissao: r.data_emissao,
+      carga: r.carga_horaria
+    })));
+  } catch(e) { next(e); }
+});
+
 module.exports = router;
 module.exports.eadAuthMiddleware = eadAuthMiddleware;
