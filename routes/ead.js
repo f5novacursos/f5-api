@@ -842,6 +842,112 @@ router.post('/checkout', eadAuthMiddleware, async (req, res, next) => {
   }
 });
 
+// POST /api/ead/checkout-publico  (SEM login prévio)
+// O comprador preenche os dados NA HORA da compra; criamos/achamos a conta e
+// geramos o pagamento. Após pagar (webhook), ele acessa logando com e-mail+senha.
+router.post('/checkout-publico', async (req, res, next) => {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const { curso_id, nome, email, cpf, telefone, senha } = req.body;
+    if (!curso_id || !nome || !email || !cpf || !senha) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Preencha nome, e-mail, CPF e senha.' });
+    }
+    const cpfLimpo = String(cpf).replace(/\D/g, '');
+    if (cpfLimpo.length < 11) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'CPF inválido.' });
+    }
+    const emailLower = String(email).toLowerCase().trim();
+
+    const { rows: cursos } = await client.query('SELECT * FROM ead_cursos WHERE id = $1', [curso_id]);
+    if (!cursos.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Curso não encontrado.' }); }
+    const curso = cursos[0];
+
+    // Achar conta existente (por e-mail ou CPF) ou criar uma nova
+    const { rows: existentes } = await client.query(
+      `SELECT * FROM ead_usuarios
+       WHERE LOWER(email) = $1 OR REPLACE(REPLACE(cpf,'.',''),'-','') = $2`,
+      [emailLower, cpfLimpo]
+    );
+    let usuario, contaExistente = false;
+    if (existentes.length) {
+      usuario = existentes[0];
+      contaExistente = true; // mantém a senha antiga
+    } else {
+      const hash = bcrypt.hashSync(senha, 10);
+      const { rows: novo } = await client.query(
+        `INSERT INTO ead_usuarios (nome, email, senha_hash, cpf, telefone)
+         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [nome, emailLower, hash, cpfLimpo, telefone || null]
+      );
+      usuario = novo[0];
+    }
+
+    // Curso grátis: libera direto
+    if (parseFloat(curso.preco) <= 0) {
+      await client.query(
+        `INSERT INTO ead_matriculas (usuario_id, curso_id, status)
+         VALUES ($1, $2, 'ativa')
+         ON CONFLICT (usuario_id, curso_id) DO UPDATE SET status = 'ativa'`,
+        [usuario.id, curso.id]
+      );
+      await client.query('COMMIT');
+      return res.json({ ok: true, status: 'ativa', conta_existente: contaExistente, email: usuario.email });
+    }
+
+    // Matrícula pendente + link InfinitePay
+    const { rows: mats } = await client.query(
+      `INSERT INTO ead_matriculas (usuario_id, curso_id, status)
+       VALUES ($1, $2, 'pendente')
+       ON CONFLICT (usuario_id, curso_id) DO UPDATE SET status = ead_matriculas.status
+       RETURNING *`,
+      [usuario.id, curso.id]
+    );
+    const matricula = mats[0];
+    const order_nsu = `ead-mat-${matricula.id}-${Date.now()}`;
+    const preco_centavos = Math.round(parseFloat(curso.preco) * 100);
+
+    const HANDLE = process.env.INFINITEPAY_HANDLE || 'f5novacursos';
+    const IP_URL = 'https://api.checkout.infinitepay.io/links';
+    const BASE_URL = process.env.BASE_URL || 'https://api.f5novacursos.com.br';
+
+    const payload = {
+      handle: HANDLE,
+      order_nsu,
+      items: [{ quantity: 1, price: preco_centavos, description: curso.titulo }],
+      redirect_url: `https://f5novacursos.com.br/ead.html?pago=1`,
+      webhook_url: `${BASE_URL}/webhook/infinitepay`,
+      customer: { name: usuario.nome, email: usuario.email },
+    };
+
+    const ipRes = await fetch(IP_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    if (!ipRes.ok) {
+      const errText = await ipRes.text();
+      await client.query('ROLLBACK');
+      return res.status(502).json({ error: 'Erro no checkout InfinitePay', detail: errText });
+    }
+    const data = await ipRes.json();
+    const checkout_url = data.url || data.checkout_url || data.link;
+
+    await client.query(
+      'UPDATE ead_matriculas SET order_nsu = $1, receipt_url = $2 WHERE id = $3',
+      [order_nsu, checkout_url, matricula.id]
+    );
+    await client.query('COMMIT');
+    res.json({ ok: true, status: 'pendente', checkout_url, order_nsu, conta_existente: contaExistente, email: usuario.email });
+
+  } catch(e) {
+    await client.query('ROLLBACK');
+    next(e);
+  } finally {
+    client.release();
+  }
+});
+
 // Listar alunos do EAD (Admin)
 // Mostra: usuários web (com matrícula) E presenciais ELEGÍVEIS pela turma
 // (mesmo que ainda não tenham logado no portal — acesso é automático por CPF).
