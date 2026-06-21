@@ -248,15 +248,17 @@ router.post('/auth/login', async (req, res, next) => {
     }
 
     // Fluxo Aluno Público (Web / Venda) via E-mail ou CPF + Senha
-    const identificador = (email || cpf || '').toLowerCase().trim();
-    if (!identificador || !senha) {
+    const idRaw = (email || cpf || '').trim();
+    if (!idRaw || !senha) {
       return res.status(400).json({ error: 'Preencha CPF/E-mail e Senha.' });
     }
+    const idEmail = idRaw.toLowerCase();        // casa por e-mail (mesmo com dígitos)
+    const idDigits = idRaw.replace(/\D/g, '');  // casa por CPF (só os números)
 
     const { rows: users } = await db.query(
-      `SELECT * FROM ead_usuarios 
-       WHERE LOWER(email) = $1 OR REPLACE(REPLACE(cpf, '.', ''), '-', '') = $1`,
-      [identificador.replace(/\D/g, '') || identificador]
+      `SELECT * FROM ead_usuarios
+       WHERE LOWER(email) = $1 OR ($2 <> '' AND REPLACE(REPLACE(cpf, '.', ''), '-', '') = $2)`,
+      [idEmail, idDigits]
     );
 
     if (!users.length) {
