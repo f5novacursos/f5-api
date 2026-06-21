@@ -9,6 +9,21 @@ const path = require('path');
 const JWT_SECRET = process.env.EAD_JWT_SECRET || 'ead2026secret';
 const JWT_EXPIRY = '7d';
 
+// Normaliza texto: remove acento e baixa caixa (p/ casar nomes de turma/curso)
+function _norm(s) {
+  return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+// Dado o nome da turma/curso presencial, retorna os TÍTULOS de cursos EAD elegíveis.
+// Robusto a acento ("Informática") e sem o falso 'ia' (que pegava Excel/Design).
+function cursosEadElegiveis(...nomes) {
+  const t = _norm(nomes.filter(Boolean).join(' '));
+  const titulos = [];
+  if (t.includes('informatica')) titulos.push('Informática Profissional + IA EAD');
+  if (t.includes('excel'))       titulos.push('Excel Profissional + IA EAD');
+  return titulos;
+}
+
 // Garantir que a pasta privada de vídeos exista
 const videosDir = path.join(__dirname, '../private/videos');
 if (!fs.existsSync(videosDir)) {
@@ -186,28 +201,8 @@ router.post('/auth/login', async (req, res, next) => {
 
       const aluno = alunos[0];
       
-      // Mapear cursos ead elegíveis com base na turma do presencial
-      const cursosElegiveis = [];
-      const cursoPresencial = (aluno.turma_curso_nome || '').toLowerCase();
-      
-      if (cursoPresencial.includes('informatica') || cursoPresencial.includes('ia') || cursoPresencial.includes('inteligência')) {
-        cursosElegiveis.push('Informática Profissional + IA EAD');
-      }
-      if (cursoPresencial.includes('excel')) {
-        cursosElegiveis.push('Excel Profissional + IA EAD');
-      }
-
-      // Se não houver curso elegível explícito, mas estiver ativo no acadêmico, 
-      // podemos dar acesso conforme o que ele tiver na coluna 'curso' do aluno
-      if (cursosElegiveis.length === 0 && aluno.curso) {
-        const cAluno = aluno.curso.toLowerCase();
-        if (cAluno.includes('informatica') || cAluno.includes('ia')) {
-          cursosElegiveis.push('Informática Profissional + IA EAD');
-        }
-        if (cAluno.includes('excel')) {
-          cursosElegiveis.push('Excel Profissional + IA EAD');
-        }
-      }
+      // Mapear cursos ead elegíveis com base na turma (ou curso) do presencial
+      const cursosElegiveis = cursosEadElegiveis(aluno.turma_curso_nome, aluno.curso);
 
       if (cursosElegiveis.length === 0) {
         return res.status(403).json({ error: 'Seu curso presencial não possui um equivalente no EAD liberado.' });
@@ -846,43 +841,69 @@ router.post('/checkout', eadAuthMiddleware, async (req, res, next) => {
 });
 
 // Listar alunos do EAD (Admin)
+// Mostra: usuários web (com matrícula) E presenciais ELEGÍVEIS pela turma
+// (mesmo que ainda não tenham logado no portal — acesso é automático por CPF).
 router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
   try {
     const { search } = req.query;
-    let query = `
-      SELECT u.id, u.nome, u.email, u.cpf, u.telefone, u.criado_em, 'web' AS tipo
-      FROM ead_usuarios u
-      UNION ALL
-      SELECT a.id, a.nome, a.email, a.cpf, a.whatsapp AS telefone, a.pagamento AS criado_em, 'presencial' AS tipo
+
+    // mapa titulo -> id dos cursos EAD
+    const { rows: eadCursos } = await db.query('SELECT id, titulo FROM ead_cursos');
+    const tituloToId = {};
+    eadCursos.forEach(c => { tituloToId[c.titulo] = c.id; });
+
+    const lista = [];
+
+    // 1) Usuários web (vendas online) + suas matrículas ativas
+    const { rows: webs } = await db.query(
+      'SELECT id, nome, email, cpf, telefone, criado_em FROM ead_usuarios ORDER BY nome'
+    );
+    for (const u of webs) {
+      const { rows: mats } = await db.query(
+        "SELECT curso_id FROM ead_matriculas WHERE usuario_id = $1 AND status = 'ativa'",
+        [u.id]
+      );
+      lista.push({
+        id: u.id, nome: u.nome, email: u.email, cpf: u.cpf,
+        telefone: u.telefone, criado_em: u.criado_em, tipo: 'web',
+        cursos: mats.map(m => m.curso_id),
+      });
+    }
+
+    // 2) Presenciais ativos/formados, elegíveis pela turma (independe de já ter logado)
+    const { rows: pres } = await db.query(`
+      SELECT a.id, a.nome, a.email, a.cpf, a.whatsapp AS telefone, a.pagamento AS criado_em,
+             a.curso, t.nome AS turma_nome
       FROM alunos a
-      JOIN ead_matriculas m ON a.id = m.aluno_id
-      GROUP BY a.id
-    `;
-    const params = [];
-    
+      LEFT JOIN turmas t ON a.turma_id = t.id
+      WHERE a.status IN ('ativo', 'formado')
+      ORDER BY a.nome
+    `);
+    for (const a of pres) {
+      const titulos = cursosEadElegiveis(a.turma_nome, a.curso);
+      if (!titulos.length) continue; // turma sem equivalente EAD (ex: Design) — pula
+      const cursosIds = titulos.map(t => tituloToId[t]).filter(Boolean);
+      lista.push({
+        id: a.id, nome: a.nome, email: a.email, cpf: a.cpf,
+        telefone: a.telefone, criado_em: a.criado_em, tipo: 'presencial',
+        turma: a.turma_nome || null,
+        cursos: cursosIds,
+      });
+    }
+
+    // Filtro de busca (nome / cpf / email)
+    let result = lista;
     if (search) {
-      params.push('%' + search + '%');
-      query = `
-        SELECT * FROM (${query}) AS total
-        WHERE nome ILIKE $1 OR cpf ILIKE $1 OR email ILIKE $1
-      `;
+      const s = String(search).toLowerCase();
+      const sNum = s.replace(/\D/g, '');
+      result = lista.filter(x =>
+        (x.nome || '').toLowerCase().includes(s) ||
+        (x.email || '').toLowerCase().includes(s) ||
+        (sNum && (x.cpf || '').replace(/\D/g, '').includes(sNum))
+      );
     }
-    
-    const { rows } = await db.query(query, params);
-    
-    // Obter as matrículas de cada um
-    for (const aluno of rows) {
-      let queryMats = '';
-      if (aluno.tipo === 'web') {
-        queryMats = "SELECT curso_id FROM ead_matriculas WHERE usuario_id = $1 AND status = 'ativa'";
-      } else {
-        queryMats = "SELECT curso_id FROM ead_matriculas WHERE aluno_id = $1 AND status = 'ativa'";
-      }
-      const { rows: mats } = await db.query(queryMats, [aluno.id]);
-      aluno.cursos = mats.map(m => m.curso_id);
-    }
-    
-    res.json(rows);
+
+    res.json(result);
   } catch(e) { next(e); }
 });
 
