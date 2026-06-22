@@ -610,12 +610,23 @@ router.get('/video-url/:aulaId', eadAuthMiddleware, async (req, res, next) => {
     }
 
     if (!aula.url) return res.status(400).json({ error: 'Aula sem vídeo cadastrado.' });
+
+    const raw = String(aula.url).trim();
+
+    // YouTube → devolve a url original (o front monta o embed).
+    if (raw.includes('youtube.com') || raw.includes('youtu.be')) {
+      return res.json({ tipo: 'youtube', url: raw });
+    }
+    // URL http completa (vídeo direto ou outro embed) → devolve como está.
+    if (/^https?:\/\//i.test(raw)) {
+      return res.json({ tipo: 'http', url: raw });
+    }
+    // Caso contrário: é chave de objeto no R2 → URL assinada de curta duração.
     if (!r2.r2Configurado()) {
       return res.status(503).json({ error: 'Armazenamento de vídeo (R2) ainda não configurado.' });
     }
-
-    const url = r2.presignGet(aula.url, 600); // 10 min
-    res.json({ url });
+    const url = r2.presignGet(raw, 600); // 10 min
+    res.json({ tipo: 'r2', url });
   } catch(e) { next(e); }
 });
 
