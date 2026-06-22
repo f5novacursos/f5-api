@@ -130,6 +130,10 @@ async function initEadDatabase() {
   await db.query(`ALTER TABLE ead_cursos ADD COLUMN IF NOT EXISTS imagem VARCHAR(500)`);
   // imagem pode guardar URL OU a própria imagem (data URI base64) — precisa caber
   await db.query(`ALTER TABLE ead_cursos ALTER COLUMN imagem TYPE TEXT`);
+  // EAD melhorias 2026-06-22: descrição da aula/módulo + material como ARQUIVO (chave R2 ou URL)
+  await db.query(`ALTER TABLE ead_aulas ADD COLUMN IF NOT EXISTS descricao TEXT`);
+  await db.query(`ALTER TABLE ead_aulas ADD COLUMN IF NOT EXISTS material_url TEXT`);
+  await db.query(`ALTER TABLE ead_modulos ADD COLUMN IF NOT EXISTS descricao TEXT`);
 
   // Popular cursos iniciais se vazia
   const { rows } = await db.query('SELECT COUNT(*) FROM ead_cursos');
@@ -349,15 +353,20 @@ router.get('/cursos', async (req, res, next) => {
         'SELECT * FROM ead_modulos WHERE curso_id = $1 ORDER BY ordem ASC, id ASC',
         [curso.id]
       );
-      
+
       for (const modulo of modulos) {
+        // NÃO expõe a.url (chave do vídeo é segredo) — só o booleano tem_video p/ o admin.
+        // material_url é a chave/URL do PDF/arquivo (não é segredo de acesso); tem_material idem.
         const { rows: aulas } = await db.query(
-          'SELECT id, modulo_id, titulo, duracao, material, gratis, ordem FROM ead_aulas WHERE modulo_id = $1 ORDER BY ordem ASC, id ASC',
+          `SELECT id, modulo_id, titulo, descricao, duracao, material, material_url, gratis, ordem,
+                  (url IS NOT NULL AND url <> '') AS tem_video
+           FROM ead_aulas WHERE modulo_id = $1 ORDER BY ordem ASC, id ASC`,
           [modulo.id]
         );
+        aulas.forEach(a => { a.tem_material = !!(a.material_url && String(a.material_url).trim()); });
         modulo.aulas = aulas;
       }
-      
+
       curso.modulos = modulos;
     }
 
@@ -436,6 +445,23 @@ router.post('/modulos', eadAdminMiddleware, async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
+// PUT /api/ead/modulos/:id (Admin) — renomeia / edita um módulo.
+router.put('/modulos/:id', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const { titulo, descricao, ordem } = req.body;
+    const { rows } = await db.query(
+      `UPDATE ead_modulos SET
+         titulo = COALESCE($1, titulo),
+         descricao = COALESCE($2, descricao),
+         ordem = COALESCE($3, ordem)
+       WHERE id = $4 RETURNING *`,
+      [titulo, descricao, (ordem != null ? parseInt(ordem) : null), req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Módulo não encontrado.' });
+    res.json(rows[0]);
+  } catch(e) { next(e); }
+});
+
 // DELETE /api/ead/modulos/:id (Admin) — manda o módulo (e suas aulas) pra Lixeira
 router.delete('/modulos/:id', eadAdminMiddleware, async (req, res, next) => {
   try {
@@ -458,15 +484,51 @@ router.delete('/modulos/:id', eadAdminMiddleware, async (req, res, next) => {
 // POST /api/ead/aulas (Admin)
 router.post('/aulas', eadAdminMiddleware, async (req, res, next) => {
   try {
-    const { modulo_id, titulo, url, duracao, material, gratis, ordem } = req.body;
+    const { modulo_id, titulo, url, descricao, duracao, material, material_url, gratis, ordem } = req.body;
     if (!modulo_id || !titulo) return res.status(400).json({ error: 'modulo_id e titulo são obrigatórios.' });
 
     const { rows } = await db.query(
-      `INSERT INTO ead_aulas (modulo_id, titulo, url, duracao, material, gratis, ordem) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [modulo_id, titulo, url || '', parseInt(duracao) || 10, material || '', Boolean(gratis), parseInt(ordem) || 0]
+      `INSERT INTO ead_aulas (modulo_id, titulo, url, descricao, duracao, material, material_url, gratis, ordem)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [modulo_id, titulo, url || '', descricao || '', parseInt(duracao) || 10, material || '', material_url || '', Boolean(gratis), parseInt(ordem) || 0]
     );
     res.status(201).json(rows[0]);
+  } catch(e) { next(e); }
+});
+
+// PUT /api/ead/aulas/:id (Admin) — edita uma aula existente.
+// Campos ausentes (undefined) são preservados; string vazia LIMPA o campo
+// (ex.: apagar a URL do vídeo). url/material_url usam COALESCE só quando undefined.
+router.put('/aulas/:id', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id);
+    const b = req.body || {};
+    const has = k => Object.prototype.hasOwnProperty.call(b, k);
+    const { rows } = await db.query(
+      `UPDATE ead_aulas SET
+         titulo       = COALESCE($1, titulo),
+         url          = CASE WHEN $2::boolean THEN $3 ELSE url END,
+         descricao    = COALESCE($4, descricao),
+         duracao      = COALESCE($5, duracao),
+         material     = COALESCE($6, material),
+         material_url = CASE WHEN $7::boolean THEN $8 ELSE material_url END,
+         gratis       = COALESCE($9, gratis),
+         ordem        = COALESCE($10, ordem)
+       WHERE id = $11 RETURNING *`,
+      [
+        has('titulo') ? b.titulo : null,
+        has('url'), has('url') ? (b.url || '') : null,
+        has('descricao') ? b.descricao : null,
+        has('duracao') ? (parseInt(b.duracao) || 10) : null,
+        has('material') ? b.material : null,
+        has('material_url'), has('material_url') ? (b.material_url || '') : null,
+        has('gratis') ? Boolean(b.gratis) : null,
+        has('ordem') ? (parseInt(b.ordem) || 0) : null,
+        id,
+      ]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Aula não encontrada.' });
+    res.json(rows[0]);
   } catch(e) { next(e); }
 });
 
@@ -627,6 +689,69 @@ router.get('/video-url/:aulaId', eadAuthMiddleware, async (req, res, next) => {
     }
     const url = r2.presignGet(raw, 600); // 10 min
     res.json({ tipo: 'r2', url });
+  } catch(e) { next(e); }
+});
+
+// GET /api/ead/material-url/:aulaId — devolve URL p/ abrir o ARQUIVO de material
+// (PDF etc). Mesma checagem de matrícula do vídeo. http/https → como está; chave → presigned GET.
+router.get('/material-url/:aulaId', eadAuthMiddleware, async (req, res, next) => {
+  try {
+    const { aulaId } = req.params;
+    const { rows: aulas } = await db.query(
+      `SELECT a.*, m.curso_id FROM ead_aulas a JOIN ead_modulos m ON a.modulo_id = m.id WHERE a.id = $1`,
+      [aulaId]
+    );
+    if (!aulas.length) return res.status(404).json({ error: 'Aula não encontrada.' });
+    const aula = aulas[0];
+
+    if (!aula.gratis) {
+      let matriculado = false;
+      if (req.user.role === 'admin') {
+        matriculado = true;
+      } else if (req.user.tipo === 'presencial') {
+        const { rows } = await db.query(
+          "SELECT id FROM ead_matriculas WHERE aluno_id = $1 AND curso_id = $2 AND status = 'ativa'",
+          [req.user.id, aula.curso_id]);
+        matriculado = rows.length > 0;
+      } else if (req.user.tipo === 'web') {
+        const { rows } = await db.query(
+          "SELECT id FROM ead_matriculas WHERE usuario_id = $1 AND curso_id = $2 AND status = 'ativa'",
+          [req.user.id, aula.curso_id]);
+        matriculado = rows.length > 0;
+      }
+      if (!matriculado) return res.status(403).json({ error: 'Você não possui matrícula ativa neste curso.' });
+    }
+
+    const raw = String(aula.material_url || '').trim();
+    if (!raw) return res.status(404).json({ error: 'Aula sem material de arquivo.' });
+    if (/^https?:\/\//i.test(raw)) return res.json({ tipo: 'http', url: raw });
+    if (!r2.r2Configurado()) return res.status(503).json({ error: 'Armazenamento (R2) não configurado.' });
+    res.json({ tipo: 'r2', url: r2.presignGet(raw, 600) });
+  } catch(e) { next(e); }
+});
+
+// POST /api/ead/upload-url (Admin) — gera URL assinada de UPLOAD (PUT) pro R2.
+// Body: { filename, tipo } (tipo: 'video' | 'material'). Retorna { key, url, expira }.
+// O admin faz fetch(url,{method:'PUT',body:arquivo}) e depois salva `key` no campo
+// da aula (url do vídeo, ou material_url). Exige CORS configurado no bucket.
+router.post('/upload-url', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    if (!r2.r2Configurado()) {
+      return res.status(503).json({ error: 'Armazenamento de vídeo (R2) ainda não configurado.' });
+    }
+    const { filename, tipo } = req.body || {};
+    if (!filename) return res.status(400).json({ error: 'filename é obrigatório.' });
+
+    // Sanitiza o nome: tira acento, troca tudo que não for [a-z0-9.-] por '-'
+    const base = String(filename)
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/^-+|-+$/g, '') || 'arquivo';
+    const pasta = (tipo === 'material') ? 'materiais' : 'videos';
+    const rand = Math.random().toString(36).slice(2, 8);
+    const key = `${pasta}/${Date.now()}-${rand}-${base}`;
+
+    const url = r2.presignPut(key, 3600); // 1h p/ concluir o upload
+    res.json({ ok: true, key, url, expira: 3600 });
   } catch(e) { next(e); }
 });
 
