@@ -165,6 +165,43 @@ async function webhookInfinitePay(req, res) {
       );
 
       console.log(`[Webhook EAD] Matrícula ativada - order_nsu: ${order_nsu}`);
+
+      // Notificar n8n — igual ao fluxo presencial
+      const mat = mats[0];
+      try {
+        let nome = '', telefone = '', curso = '';
+        if (mat.usuario_id) {
+          const { rows: u } = await db.query(
+            `SELECT u.nome, u.telefone, c.titulo AS curso
+               FROM ead_usuarios u
+               JOIN ead_matriculas m ON m.usuario_id = u.id
+               JOIN ead_cursos c ON c.id = m.curso_id
+              WHERE m.id = $1`, [mat.id]);
+          if (u.length) { nome = u[0].nome; telefone = u[0].telefone || ''; curso = u[0].curso; }
+        } else if (mat.aluno_id) {
+          const { rows: a } = await db.query(
+            `SELECT a.nome, a.whatsapp AS telefone, c.titulo AS curso
+               FROM alunos a
+               JOIN ead_matriculas m ON m.aluno_id = a.id
+               JOIN ead_cursos c ON c.id = m.curso_id
+              WHERE m.id = $1`, [mat.id]);
+          if (a.length) { nome = a[0].nome; telefone = a[0].telefone || ''; curso = a[0].curso; }
+        }
+        if (telefone) {
+          fetch('https://n8n.f5novacursos.com.br/webhook/f5nova-matricula-confirmada', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nome,
+              whatsapp: '55' + telefone.replace(/\D/g, ''),
+              curso,
+              aluno_id: mat.usuario_id || mat.aluno_id,
+              tipo: 'ead'
+            })
+          }).catch(e => console.error('[n8n EAD matricula]', e.message));
+        }
+      } catch (e) { console.error('[n8n EAD] erro ao buscar dados:', e.message); }
+
       return res.status(200).json({ ok: true });
     }
 
