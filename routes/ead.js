@@ -134,6 +134,7 @@ async function initEadDatabase() {
   await db.query(`ALTER TABLE ead_aulas ADD COLUMN IF NOT EXISTS descricao TEXT`);
   await db.query(`ALTER TABLE ead_aulas ADD COLUMN IF NOT EXISTS material_url TEXT`);
   await db.query(`ALTER TABLE ead_modulos ADD COLUMN IF NOT EXISTS descricao TEXT`);
+  await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS deletado_em TIMESTAMP`);
 
   // Popular cursos iniciais se vazia
   const { rows } = await db.query('SELECT COUNT(*) FROM ead_cursos');
@@ -1155,7 +1156,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
 
     // 1) Usuários web (vendas online) + suas matrículas ativas
     const { rows: webs } = await db.query(
-      'SELECT id, nome, email, cpf, telefone, criado_em FROM ead_usuarios ORDER BY nome'
+      'SELECT id, nome, email, cpf, telefone, criado_em FROM ead_usuarios WHERE deletado_em IS NULL ORDER BY nome'
     );
     for (const u of webs) {
       const { rows: mats } = await db.query(
@@ -1203,6 +1204,105 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
     }
 
     res.json(result);
+  } catch(e) { next(e); }
+});
+
+// POST /api/ead/alunos/avulso — cria aluno web + libera cursos (admin, sem pagamento)
+router.post('/alunos/avulso', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const { nome, email, cpf, senha, telefone, curso_ids } = req.body;
+    if (!nome || !email || !cpf || !senha) {
+      return res.status(400).json({ error: 'nome, email, cpf e senha são obrigatórios' });
+    }
+    const cursos = Array.isArray(curso_ids) ? curso_ids.map(Number).filter(Boolean) : [];
+    const hash = await bcrypt.hash(String(senha), 10);
+    const cpfLimpo = String(cpf).replace(/\D/g, '');
+    const cpfFmt = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    const { rows: eu } = await db.query(
+      `INSERT INTO ead_usuarios (nome, email, cpf, senha_hash, telefone)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [nome.trim(), email.trim().toLowerCase(), cpfFmt, hash, telefone || null]
+    );
+    const usuarioId = eu[0].id;
+    for (const cursoId of cursos) {
+      await db.query(
+        `INSERT INTO ead_matriculas (usuario_id, curso_id, status)
+         VALUES ($1,$2,'ativa') ON CONFLICT (usuario_id, curso_id) DO NOTHING`,
+        [usuarioId, cursoId]
+      );
+    }
+    res.status(201).json({ ok: true, usuario_id: usuarioId });
+  } catch(e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'E-mail ou CPF já cadastrado' });
+    next(e);
+  }
+});
+
+// DELETE /api/ead/alunos/web/:id — soft-delete usuário web (admin)
+router.delete('/alunos/web/:id', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.query(`UPDATE ead_usuarios SET deletado_em = NOW() WHERE id = $1`, [id]);
+    await db.query(`UPDATE ead_matriculas SET status = 'inativa' WHERE usuario_id = $1`, [id]);
+    res.json({ ok: true });
+  } catch(e) { next(e); }
+});
+
+// GET /api/ead/alunos/web/:id/matriculas — matrículas ativas de um usuário web (admin)
+router.get('/alunos/web/:id/matriculas', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT m.id AS matricula_id, c.id AS curso_id, c.titulo, c.icone
+         FROM ead_matriculas m
+         JOIN ead_cursos c ON c.id = m.curso_id
+        WHERE m.usuario_id = $1 AND m.status = 'ativa'
+        ORDER BY c.titulo`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch(e) { next(e); }
+});
+
+// GET /api/ead/alunos/presencial/:id/matriculas — matrículas EAD de um aluno presencial (admin)
+router.get('/alunos/presencial/:id/matriculas', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT m.id AS matricula_id, c.id AS curso_id, c.titulo, c.icone
+         FROM ead_matriculas m
+         JOIN ead_cursos c ON c.id = m.curso_id
+        WHERE m.aluno_id = $1 AND m.status = 'ativa'
+        ORDER BY c.titulo`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch(e) { next(e); }
+});
+
+// POST /api/ead/matriculas — libera um curso para um aluno (admin)
+router.post('/matriculas', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const { tipo, id, curso_id } = req.body; // tipo='web'|'presencial'
+    if (!tipo || !id || !curso_id) return res.status(400).json({ error: 'tipo, id e curso_id obrigatórios' });
+    const campo = tipo === 'presencial' ? 'aluno_id' : 'usuario_id';
+    const conflict = tipo === 'presencial' ? '(aluno_id, curso_id)' : '(usuario_id, curso_id)';
+    await db.query(
+      `INSERT INTO ead_matriculas (${campo}, curso_id, status)
+       VALUES ($1,$2,'ativa')
+       ON CONFLICT ${conflict} DO UPDATE SET status='ativa', data_matricula=NOW()`,
+      [id, curso_id]
+    );
+    res.json({ ok: true });
+  } catch(e) { next(e); }
+});
+
+// DELETE /api/ead/matriculas/:matriculaId — revoga acesso a um curso (admin)
+router.delete('/matriculas/:matriculaId', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    await db.query(
+      `UPDATE ead_matriculas SET status='inativa' WHERE id=$1`,
+      [req.params.matriculaId]
+    );
+    res.json({ ok: true });
   } catch(e) { next(e); }
 });
 
