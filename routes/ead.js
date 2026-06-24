@@ -6,25 +6,27 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
-const rateLimit = require('express-rate-limit');
+// Rate limiting simples sem dependência externa (Map em memória)
+const _rlStore = new Map();
+function _makeRateLimiter(windowMs, max, msg) {
+  return function rateLimiter(req, res, next) {
+    const ip = req.ip || req.connection.remoteAddress || 'unknown';
+    const now = Date.now();
+    let entry = _rlStore.get(ip + req.path);
+    if (!entry || now - entry.start > windowMs) {
+      entry = { start: now, count: 0 };
+      _rlStore.set(ip + req.path, entry);
+    }
+    entry.count++;
+    if (entry.count > max) {
+      return res.status(429).json({ error: msg });
+    }
+    next();
+  };
+}
 
-// Rate limit: máx 10 tentativas de login por IP a cada 15 minutos
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Muitas tentativas de login. Aguarde 15 minutos e tente novamente.' }
-});
-
-// Rate limit: máx 5 cadastros por IP a cada hora (evita spam de contas)
-const cadastroLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Muitos cadastros realizados. Tente novamente em 1 hora.' }
-});
+const loginLimiter   = _makeRateLimiter(15 * 60 * 1000, 10, 'Muitas tentativas de login. Aguarde 15 minutos e tente novamente.');
+const cadastroLimiter = _makeRateLimiter(60 * 60 * 1000,  5, 'Muitos cadastros realizados. Tente novamente em 1 hora.');
 
 const JWT_SECRET = process.env.EAD_JWT_SECRET;
 if (!JWT_SECRET) throw new Error('[EAD] EAD_JWT_SECRET não definida no .env — a API não pode subir sem ela.');
