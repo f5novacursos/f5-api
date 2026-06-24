@@ -954,6 +954,16 @@ router.get('/historico-acertos', async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
+// GET /api/virturia/odds-altas — entradas diamante (0-0, 5+, total exato)
+router.get('/odds-altas', require('../lib/odds-altas')(db, 'virturia_resultados', [
+  { sub: 'brasileirao-betano',   liga: 'brasileirao',   provider: 'betano' },
+  { sub: 'copa-america',         liga: 'copa_america',  provider: 'betano' },
+  { sub: 'euro',                 liga: 'euro',          provider: 'betano' },
+  { sub: 'italiano',             liga: 'italiano',      provider: 'betano' },
+  { sub: 'classicos-da-america', liga: 'classicos',     provider: 'betano' },
+  { sub: 'copa-das-estrelas',    liga: 'copa_estrelas', provider: 'betano' },
+]));
+
 // GET /api/virturia/betano-fetch?leagueId=204676&last=20
 // Proxy: Worker chama esta rota → VPS busca na Betano → devolve JSON
 // Resolve o bloqueio 403 da Betano contra IPs de datacenter Cloudflare
