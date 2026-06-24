@@ -1169,9 +1169,9 @@ router.post('/checkout-publico', async (req, res, next) => {
   try {
     await client.query('BEGIN');
     const { curso_id, nome, email, cpf, telefone, senha } = req.body;
-    if (!curso_id || !nome || !email || !cpf || !senha) {
+    if (!curso_id || !nome || !email || !cpf || !senha || !telefone) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Preencha nome, e-mail, CPF e senha.' });
+      return res.status(400).json({ error: 'Preencha nome, e-mail, CPF, telefone e senha.' });
     }
     const cpfLimpo = String(cpf).replace(/\D/g, '');
     if (cpfLimpo.length < 11) {
@@ -1258,6 +1258,34 @@ router.post('/checkout-publico', async (req, res, next) => {
     );
     await client.query('COMMIT');
     res.json({ ok: true, status: 'pendente', checkout_url, order_nsu, conta_existente: contaExistente, email: usuario.email });
+
+    // Email "finalize o pagamento" — enviado após commit, não bloqueia resposta
+    try {
+      const tr = criarTransporter();
+      if (tr) {
+        await tr.sendMail({
+          from: `"F5 Nova Cursos" <${process.env.GMAIL_USER}>`,
+          to: usuario.email,
+          subject: `Finalize sua inscrição — ${curso.titulo}`,
+          html: `
+<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#0c1729;color:#e8eaf0;border-radius:12px;overflow:hidden">
+  <div style="background:#f3ad1c;padding:20px 28px;text-align:center">
+    <span style="font-size:2rem;font-weight:900;color:#0c1729;letter-spacing:.04em">F5 NOVA CURSOS</span>
+  </div>
+  <div style="padding:32px 28px">
+    <p style="font-size:1.1rem;font-weight:700;margin:0 0 8px">Olá, ${usuario.nome.split(' ')[0]}!</p>
+    <p style="color:#a0aec0;margin:0 0 24px">Seu cadastro foi criado com sucesso. Clique no botão abaixo para finalizar o pagamento e liberar seu acesso ao curso.</p>
+    <div style="background:#131f35;border-radius:8px;padding:16px 20px;margin-bottom:24px">
+      <p style="margin:0;font-size:.85rem;color:#a0aec0">Curso</p>
+      <p style="margin:4px 0 0;font-weight:700;font-size:1rem">${curso.titulo}</p>
+    </div>
+    <a href="${checkout_url}" style="display:block;background:#f3ad1c;color:#0c1729;text-align:center;padding:14px;border-radius:8px;font-weight:800;font-size:1rem;text-decoration:none">Finalizar Pagamento →</a>
+    <p style="margin:24px 0 0;font-size:.8rem;color:#4a5568;text-align:center">Após o pagamento, você acessa o portal com o e-mail e senha que cadastrou.</p>
+  </div>
+</div>`
+        });
+      }
+    } catch(emailErr) { console.error('[EAD checkout email]', emailErr.message); }
 
   } catch(e) {
     await client.query('ROLLBACK');
