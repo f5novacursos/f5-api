@@ -26,7 +26,8 @@ const cadastroLimiter = rateLimit({
   message: { error: 'Muitos cadastros realizados. Tente novamente em 1 hora.' }
 });
 
-const JWT_SECRET = process.env.EAD_JWT_SECRET || 'ead2026secret';
+const JWT_SECRET = process.env.EAD_JWT_SECRET;
+if (!JWT_SECRET) throw new Error('[EAD] EAD_JWT_SECRET não definida no .env — a API não pode subir sem ela.');
 const JWT_EXPIRY = '7d';
 
 // Normaliza texto: remove acento e baixa caixa (p/ casar nomes de turma/curso)
