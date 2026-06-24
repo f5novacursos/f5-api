@@ -30,6 +30,19 @@ const JWT_SECRET = process.env.EAD_JWT_SECRET;
 if (!JWT_SECRET) throw new Error('[EAD] EAD_JWT_SECRET não definida no .env — a API não pode subir sem ela.');
 const JWT_EXPIRY = '7d';
 
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+
+const BASE_URL = process.env.BASE_URL || 'https://f5novacursos.com.br';
+
+function criarTransporter() {
+  if (!process.env.GMAIL_USER || !process.env.GMAIL_PASS) return null;
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_PASS }
+  });
+}
+
 // Normaliza texto: remove acento e baixa caixa (p/ casar nomes de turma/curso)
 function _norm(s) {
   return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -143,6 +156,18 @@ async function initEadDatabase() {
       matricula_id INTEGER REFERENCES ead_matriculas(id) ON DELETE CASCADE UNIQUE,
       codigo VARCHAR(50) UNIQUE NOT NULL,
       data_emissao TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // 8. Tokens de reset de senha
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS ead_reset_tokens (
+      id SERIAL PRIMARY KEY,
+      usuario_id INTEGER NOT NULL REFERENCES ead_usuarios(id) ON DELETE CASCADE,
+      token VARCHAR(64) UNIQUE NOT NULL,
+      expira_em TIMESTAMPTZ NOT NULL,
+      usado BOOLEAN DEFAULT FALSE,
+      criado_em TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
@@ -357,6 +382,86 @@ router.post('/auth/cadastro', cadastroLimiter, async (req, res, next) => {
     }
     next(e);
   }
+});
+
+
+// POST /api/ead/auth/esqueci-senha
+router.post('/auth/esqueci-senha', loginLimiter, async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'E-mail obrigatório.' });
+
+    const { rows } = await db.query(
+      `SELECT id, nome FROM ead_usuarios WHERE LOWER(email) = LOWER($1) AND deletado_em IS NULL`,
+      [email.trim()]
+    );
+
+    // Resposta genérica — não revela se o e-mail existe ou não
+    if (!rows.length) {
+      return res.json({ ok: true, msg: 'Se este e-mail estiver cadastrado, você receberá as instruções em breve.' });
+    }
+
+    const usuario = rows[0];
+    const token = crypto.randomBytes(32).toString('hex');
+    const expira = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
+
+    // Invalida tokens anteriores deste usuário e insere novo
+    await db.query(`DELETE FROM ead_reset_tokens WHERE usuario_id = $1`, [usuario.id]);
+    await db.query(
+      `INSERT INTO ead_reset_tokens (usuario_id, token, expira_em) VALUES ($1, $2, $3)`,
+      [usuario.id, token, expira]
+    );
+
+    const link = `${BASE_URL}/ead.html?reset=${token}`;
+    const transporter = criarTransporter();
+
+    if (transporter) {
+      await transporter.sendMail({
+        from: `"F5 Nova Cursos" <${process.env.GMAIL_USER}>`,
+        to: email.trim(),
+        subject: 'Recuperação de senha — F5 Nova Cursos EAD',
+        html: `
+          <div style="font-family:sans-serif;max-width:480px;margin:auto">
+            <h2 style="color:#0a1628">Olá, ${usuario.nome}!</h2>
+            <p>Recebemos uma solicitação para redefinir sua senha no portal EAD da F5 Nova Cursos.</p>
+            <p>Clique no botão abaixo para criar uma nova senha. O link expira em <strong>1 hora</strong>.</p>
+            <a href="${link}" style="display:inline-block;margin:20px 0;padding:12px 28px;background:#f3ad1c;color:#0a1628;font-weight:bold;border-radius:8px;text-decoration:none">Redefinir minha senha</a>
+            <p style="color:#888;font-size:.85rem">Se você não solicitou isso, ignore este e-mail. Sua senha não será alterada.</p>
+          </div>
+        `
+      });
+    } else {
+      console.warn('[EAD] GMAIL_USER/GMAIL_PASS não configurados — e-mail de reset não enviado. Token:', token);
+    }
+
+    res.json({ ok: true, msg: 'Se este e-mail estiver cadastrado, você receberá as instruções em breve.' });
+  } catch(e) { next(e); }
+});
+
+// POST /api/ead/auth/reset-senha
+router.post('/auth/reset-senha', async (req, res, next) => {
+  try {
+    const { token, senha } = req.body;
+    if (!token || !senha) return res.status(400).json({ error: 'Token e nova senha são obrigatórios.' });
+    if (senha.length < 6) return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres.' });
+
+    const { rows } = await db.query(
+      `SELECT * FROM ead_reset_tokens WHERE token = $1 AND usado = FALSE AND expira_em > NOW()`,
+      [token]
+    );
+
+    if (!rows.length) {
+      return res.status(400).json({ error: 'Link inválido ou expirado. Solicite um novo.' });
+    }
+
+    const resetToken = rows[0];
+    const hash = bcrypt.hashSync(senha, 10);
+
+    await db.query(`UPDATE ead_usuarios SET senha_hash = $1 WHERE id = $2`, [hash, resetToken.usuario_id]);
+    await db.query(`UPDATE ead_reset_tokens SET usado = TRUE WHERE id = $1`, [resetToken.id]);
+
+    res.json({ ok: true, msg: 'Senha alterada com sucesso! Faça login com a nova senha.' });
+  } catch(e) { next(e); }
 });
 
 
