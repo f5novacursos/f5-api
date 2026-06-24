@@ -212,25 +212,22 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
       return res.json({ ok: true, token, usuario: { nome: 'Administrador EAD', role: 'admin' } });
     }
 
-    // Fluxo Aluno Acadêmico (Presencial) via CPF + data de nascimento
+    // Fluxo Aluno Acadêmico (Presencial) via CPF
     if (cpf && !senha && !email) {
       const cpfLimpo = cpf.replace(/\D/g, '');
       if (cpfLimpo.length < 11) return res.status(400).json({ error: 'CPF inválido.' });
-      if (!nasc) return res.status(400).json({ error: 'Data de nascimento obrigatória.' });
 
-      // Busca na tabela alunos da escola validando CPF + data de nascimento
+      // Busca na tabela alunos da escola
       const { rows: alunos } = await db.query(
         `SELECT a.*, t.nome AS turma_curso_nome
          FROM alunos a
          LEFT JOIN turmas t ON a.turma_id = t.id
-         WHERE REPLACE(REPLACE(a.cpf, '.', ''), '-', '') = $1
-           AND a.data_nascimento::date = $2::date
-           AND a.status IN ('ativo', 'formado')`,
-        [cpfLimpo, nasc]
+         WHERE REPLACE(REPLACE(a.cpf, '.', ''), '-', '') = $1 AND a.status IN ('ativo', 'formado')`,
+        [cpfLimpo]
       );
 
       if (!alunos.length) {
-        return res.status(401).json({ error: 'CPF ou data de nascimento incorretos.' });
+        return res.status(401).json({ error: 'Aluno não encontrado no sistema acadêmico ou inativo.' });
       }
 
       const aluno = alunos[0];
