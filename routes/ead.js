@@ -1079,22 +1079,19 @@ router.post('/checkout', eadAuthMiddleware, async (req, res, next) => {
     const { curso_id } = req.body;
     if (!curso_id) return res.status(400).json({ error: 'curso_id é obrigatório.' });
 
-    // Só permite checkout para alunos web (públicos)
-    if (req.user.tipo !== 'web') {
-      return res.status(400).json({ error: 'Apenas alunos de vendas web necessitam pagar pelo portal.' });
-    }
-
     const { rows: cursos } = await client.query('SELECT * FROM ead_cursos WHERE id = $1', [curso_id]);
     if (!cursos.length) return res.status(404).json({ error: 'Curso não encontrado.' });
     const curso = cursos[0];
 
+    const isPresencial = req.user.tipo === 'presencial';
+    const colId = isPresencial ? 'aluno_id' : 'usuario_id';
+
     if (parseFloat(curso.preco) <= 0) {
       // Liberar gratuitamente
-      const { rows: mat } = await client.query(
-        `INSERT INTO ead_matriculas (usuario_id, curso_id, status)
+      await client.query(
+        `INSERT INTO ead_matriculas (${colId}, curso_id, status)
          VALUES ($1, $2, 'ativa')
-         ON CONFLICT (usuario_id, curso_id) DO UPDATE SET status = 'ativa'
-         RETURNING *`,
+         ON CONFLICT (${colId}, curso_id) DO UPDATE SET status = 'ativa'`,
         [req.user.id, curso.id]
       );
       await client.query('COMMIT');
@@ -1103,9 +1100,9 @@ router.post('/checkout', eadAuthMiddleware, async (req, res, next) => {
 
     // Criar/Obter matrícula pendente
     const { rows: mats } = await client.query(
-      `INSERT INTO ead_matriculas (usuario_id, curso_id, status)
+      `INSERT INTO ead_matriculas (${colId}, curso_id, status)
        VALUES ($1, $2, 'pendente')
-       ON CONFLICT (usuario_id, curso_id) DO UPDATE SET status = ead_matriculas.status
+       ON CONFLICT (${colId}, curso_id) DO UPDATE SET status = ead_matriculas.status
        RETURNING *`,
       [req.user.id, curso.id]
     );
