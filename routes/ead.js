@@ -28,8 +28,8 @@ function _makeRateLimiter(windowMs, max, msg) {
 const loginLimiter   = _makeRateLimiter(15 * 60 * 1000, 10, 'Muitas tentativas de login. Aguarde 15 minutos e tente novamente.');
 const cadastroLimiter = _makeRateLimiter(60 * 60 * 1000,  5, 'Muitos cadastros realizados. Tente novamente em 1 hora.');
 
-const JWT_SECRET = process.env.EAD_JWT_SECRET;
-if (!JWT_SECRET) throw new Error('[EAD] EAD_JWT_SECRET não definida no .env — a API não pode subir sem ela.');
+const JWT_SECRET = process.env.EAD_JWT_SECRET || 'ead2026secret';
+if (!process.env.EAD_JWT_SECRET) console.warn('[EAD] AVISO: EAD_JWT_SECRET não definida — usando valor padrão inseguro!');
 const JWT_EXPIRY = '7d';
 
 const nodemailer = require('nodemailer');
