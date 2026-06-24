@@ -1086,6 +1086,16 @@ router.post('/checkout', eadAuthMiddleware, async (req, res, next) => {
     const isPresencial = req.user.tipo === 'presencial';
     const colId = isPresencial ? 'aluno_id' : 'usuario_id';
 
+    // Buscar dados completos do usuário (email e telefone não estão no JWT)
+    let userEmail = '', userPhone = '';
+    if (isPresencial) {
+      const { rows: ua } = await client.query('SELECT email, whatsapp AS telefone FROM alunos WHERE id=$1', [req.user.id]);
+      if (ua.length) { userEmail = ua[0].email || ''; userPhone = ua[0].telefone || ''; }
+    } else {
+      const { rows: ua } = await client.query('SELECT email, telefone FROM ead_usuarios WHERE id=$1', [req.user.id]);
+      if (ua.length) { userEmail = ua[0].email || ''; userPhone = ua[0].telefone || ''; }
+    }
+
     if (parseFloat(curso.preco) <= 0) {
       // Liberar gratuitamente
       await client.query(
@@ -1123,7 +1133,8 @@ router.post('/checkout', eadAuthMiddleware, async (req, res, next) => {
       webhook_url: `${BASE_URL}/webhook/infinitepay`,
       customer: {
         name: req.user.nome,
-        email: req.user.email
+        ...(userEmail && { email: userEmail }),
+        ...(userPhone && { phone_number: '+55' + userPhone.replace(/\D/g, '') })
       }
     };
 
