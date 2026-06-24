@@ -6,6 +6,25 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
+const rateLimit = require('express-rate-limit');
+
+// Rate limit: máx 10 tentativas de login por IP a cada 15 minutos
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Muitas tentativas de login. Aguarde 15 minutos e tente novamente.' }
+});
+
+// Rate limit: máx 5 cadastros por IP a cada hora (evita spam de contas)
+const cadastroLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Muitos cadastros realizados. Tente novamente em 1 hora.' }
+});
 
 const JWT_SECRET = process.env.EAD_JWT_SECRET || 'ead2026secret';
 const JWT_EXPIRY = '7d';
@@ -178,7 +197,7 @@ function eadAdminMiddleware(req, res, next) {
 // ── ROTAS DE AUTENTICAÇÃO ─────────────────────────────────────────────
 
 // POST /api/ead/auth/login
-router.post('/auth/login', async (req, res, next) => {
+router.post('/auth/login', loginLimiter, async (req, res, next) => {
   try {
     const { cpf, email, senha, nasc } = req.body;
 
@@ -311,7 +330,7 @@ router.post('/auth/login', async (req, res, next) => {
 });
 
 // POST /api/ead/auth/cadastro
-router.post('/auth/cadastro', async (req, res, next) => {
+router.post('/auth/cadastro', cadastroLimiter, async (req, res, next) => {
   try {
     const { nome, email, senha, cpf, telefone } = req.body;
     if (!nome || !email || !senha || !cpf) {
