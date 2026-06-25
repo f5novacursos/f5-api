@@ -700,6 +700,16 @@ router.get('/previsao-proxima-hora', async (req, res, next) => {
     const minConf  = parseInt(min_confianca) || 60;
     const minOcorr = parseInt(min_ocorrencias) || 7;
 
+    // Taxa base estrutural por "principal" neste motor (calibrado 25/06/2026).
+    const BASE_RATE_PPH = { 'UNDER 1.5': 28, 'OVER 1.5': 72, 'OVER 2.5': 41, 'OVER 3.5': 18, 'OVER 4.5': 8, '0-0': 8 };
+    const MIN_EDGE_PPH  = 10; // edge mínimo sobre a base
+    const MAX_POR_LIGA  =  3; // cap por liga — mesma filosofia do top=3 da Especial
+    // Piso por liga+mercado — portado da aba Especial (25/06/2026).
+    const PISO_LM_PPH = {
+      'brasileirao|OVER 2.5':  999,
+      'copa_america|OVER 2.5': 999,
+    };
+
     // Hora BRT atual
     const agoraBRT    = new Date(Date.now() - 10800000); // UTC-3
     const horaBRT     = agoraBRT.getUTCHours();
@@ -773,19 +783,25 @@ router.get('/previsao-proxima-hora', async (req, res, next) => {
             const [res, cnt] = melhor;
             const conf = Math.round(cnt / v.total * 100);
             if (conf < minConf) continue;
+            const base = BASE_RATE_PPH[res] || 50;
+            const edge = conf - base;
+            if (edge < MIN_EDGE_PPH) continue; // sem edge real — mata OVER 1.5 de base 72%
+            const pisoLM = PISO_LM_PPH[`${liga}|${res}`] || 0;
+            if (conf < pisoLM) continue; // veto/piso por liga+mercado
             const chave = `${liga}|${slotMin}`;
             if (!padraoMap[chave]) padraoMap[chave] = [];
-            padraoMap[chave].push({ liga, slot_min: slotMin, condicao: condKey, resultado: res, confianca: conf, ocorrencias: v.total, acertos: cnt, atipico: v.atipico, janela: v.janela });
+            padraoMap[chave].push({ liga, slot_min: slotMin, condicao: condKey, resultado: res, confianca: conf, edge, ocorrencias: v.total, acertos: cnt, atipico: v.atipico, janela: v.janela });
           }
         }
       }
     }
 
-    // ── 5. Melhor padrão por slot — atípico > confiança > janela maior ──
+    // ── 5. Melhor padrão por slot — atípico > edge > confiança > janela maior ──
     const previsoes = [];
     for (const [chave, candidatos] of Object.entries(padraoMap)) {
       candidatos.sort((a, b) => {
         if (a.atipico !== b.atipico) return b.atipico - a.atipico;
+        if ((b.edge || 0) !== (a.edge || 0)) return (b.edge || 0) - (a.edge || 0);
         if (b.confianca !== a.confianca) return b.confianca - a.confianca;
         return b.janela - a.janela;
       });
@@ -803,18 +819,25 @@ router.get('/previsao-proxima-hora', async (req, res, next) => {
       });
     }
 
+    // Ordena por atípico > edge > confiança e aplica cap por liga (MAX_POR_LIGA)
     previsoes.sort((a, b) => {
       if (a.atipico !== b.atipico) return b.atipico - a.atipico;
+      if ((b.edge || 0) !== (a.edge || 0)) return (b.edge || 0) - (a.edge || 0);
       return b.confianca - a.confianca;
+    });
+    const contLiga = {};
+    const previsoesFinal = previsoes.filter(p => {
+      contLiga[p.liga] = (contLiga[p.liga] || 0) + 1;
+      return contLiga[p.liga] <= MAX_POR_LIGA;
     });
 
     res.json({
       ok: true,
       hora_brt: proxHoraBRT,
       hora_brt_atual: horaBRT,
-      total: previsoes.length,
-      total_atipicos: previsoes.filter(p => p.atipico).length,
-      previsoes,
+      total: previsoesFinal.length,
+      total_atipicos: previsoesFinal.filter(p => p.atipico).length,
+      previsoes: previsoesFinal,
     });
   } catch(e) { next(e); }
 });
