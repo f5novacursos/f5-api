@@ -145,7 +145,7 @@ function calcularEntradas(porLiga, clockOffsetMs, { topN, minAmostra, minConf, g
       }
       const e = entradaDoSlot(slot, arr, idxGat, stat1, stat2, clockOffsetMs, minAmostra, minConf);
       // piso por mercado aplicado SOBRE a confiança já ajustada pela força da coluna
-      if (e) { aplicarForcaColuna(e, slots, grid); if (e.pct >= pisoDe(e.mercado, minConf)) cands.push(e); }
+      if (e) { aplicarForcaColuna(e, slots, grid); if (e.pct >= pisoDe(e.mercado, minConf, lg)) cands.push(e); }
     }
     // dedupe Martingale: a entrada mais cedo ANCORA e CONSOME os 2 slots seguintes
     // (as 3 colunas do tiro: S, S+1, S+2) de QUALQUER mercado. Uma vez que 04' ancora
@@ -210,7 +210,45 @@ function aplicarForcaColuna(e, slots, grid) {
 // só fica limpo (100%) em pct>=80; abaixo disso sangra (~83-88%). Então exige barra alta:
 // joga só as melhores AMBAS. UNDER (base 58%) e OVER (base 41%) têm edge real → piso global.
 const PISO_MERCADO = { 'AMBAS SIM': 80 };
-function pisoDe(mercado, minConf) { return Math.max(minConf, PISO_MERCADO[mercado] || 0); }
+
+// Piso por liga+mercado — sobrepõe PISO_MERCADO quando mais restritivo.
+// Calibrado em 25/06/2026 com 7 dias de histórico real (3966 entradas conferidas):
+//
+//  OVER 2.5 estruturalmente fraco (adjacência não prevê bem):
+//    premier_league  → 59% geral; sem entradas >=75 → VETADO
+//    copa_america    → 76% geral; piora em >=75 (67%) → VETADO
+//    euro_cup        → 73% geral; piora em >=75 (60%) → VETADO
+//    copa_mundo      → 73% geral; edge marginal → piso 75
+//    copa_estrelas   → 73% geral, mas >=70 vira 100% (6 casos) → piso 70
+//    sul_americana   → 78% geral, mas >=70 melhora (89%) → piso 70
+//
+//  AMBAS SIM sem edge de adjacência em certas ligas:
+//    brasileirao     → 65% geral; piso 80 piora (60%) → VETADO
+//    premier_league  → 75% geral; sem entradas >=80 → VETADO
+//    sul_americana   → 71% geral; sem entradas >=80 → VETADO
+//
+//  O que acerta bem e NÃO é alterado:
+//    UNDER 2.5 em todas as ligas (92–98%) — piso global mantido
+//    express_cup|UNDER 2.5 → 98% (831 entradas)
+//    copa_mundo|AMBAS SIM  → 96%
+//    euro|OVER 2.5 >=70    → 100% (piso 70 já cobre)
+const PISO_LIGA_MERCADO = {
+  'premier_league|OVER 2.5':  999, // VETADO — 59%
+  'copa_america|OVER 2.5':    999, // VETADO — 76%, piora com piso
+  'euro_cup|OVER 2.5':        999, // VETADO — 73%, piora com piso
+  'copa_mundo|OVER 2.5':       75, // edge marginal
+  'copa_estrelas|OVER 2.5':    70, // >=70 vira 100%
+  'sul_americana|OVER 2.5':    70, // >=70 melhora (89%)
+  'brasileirao|AMBAS SIM':    999, // VETADO — 65%, piso 80 piora
+  'premier_league|AMBAS SIM': 999, // VETADO — 75%
+  'sul_americana|AMBAS SIM':  999, // VETADO — 71%
+};
+
+function pisoDe(mercado, minConf, liga) {
+  const chave = liga ? `${liga}|${mercado}` : null;
+  const pisoLiga = chave ? (PISO_LIGA_MERCADO[chave] ?? 0) : 0;
+  return Math.max(minConf, PISO_MERCADO[mercado] || 0, pisoLiga);
+}
 
 // ── Snapshot da aba Especial (trava AO VIVO + histórico de acerto) ──
 // Foto canônica: histórico 720h, top 6/liga, conf>=60, amostra>=8.
