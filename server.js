@@ -35,6 +35,7 @@ app.use('/api/financeiro',  require('./routes/financeiro'));
 app.use('/api/contato',     require('./routes/contato'));
 app.use('/api/ead',         require('./routes/ead'));
 app.use('/api/lixeira',     require('./routes/lixeira'));
+app.use('/api/debounce',    require('./routes/debounce'));
 // Virturia: nunca cachear — dados mudam a cada minuto
 app.use('/api/virturia', (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
