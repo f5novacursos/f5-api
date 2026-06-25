@@ -6,14 +6,17 @@ const CHATWOOT_TOKEN = '873b5TyRgZMfkZXpphxZgH4z';
 const CHATWOOT_ACCOUNT = 1;
 
 // POST /webhook/chatwoot
-// Recebe eventos do Chatwoot e propaga label humano_ativo da conversa para o contato
+// Recebe eventos do Chatwoot e propaga label humano_ativo da conversa para o contato.
+// Usa evento conversation_updated pois conversation_label_created não existe nesta versão.
 router.post('/', async (req, res) => {
   try {
-    const { event, label, conversation } = req.body;
+    const { event, conversation } = req.body;
 
-    // Só nos interessa conversation_label_created com label humano_ativo
-    if (event !== 'conversation_label_created') return res.sendStatus(200);
-    if (label !== 'humano_ativo') return res.sendStatus(200);
+    // Só nos interessa conversation_updated com label humano_ativo na conversa
+    if (event !== 'conversation_updated') return res.sendStatus(200);
+
+    const convLabels = conversation?.labels || [];
+    if (!convLabels.includes('humano_ativo')) return res.sendStatus(200);
 
     const contactId = conversation?.meta?.sender?.id;
     if (!contactId) {
