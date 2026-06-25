@@ -34,4 +34,11 @@ router.get('/check/:phone/:uid', (req, res) => {
   res.json({ isLatest: true });
 });
 
+// GET /api/debounce/humano/:phone
+// Retorna { humano: true } se Eduardo assumiu este atendimento durante o processamento
+router.get('/humano/:phone', (req, res) => {
+  const current = state.get(req.params.phone);
+  res.json({ humano: !!(current && current.uid && current.uid.startsWith('HUMANO_ASSUMIU_')) });
+});
+
 module.exports = router;
