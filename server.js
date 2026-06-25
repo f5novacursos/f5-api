@@ -56,9 +56,10 @@ app.use('/api/virturia-b365', require('./routes/virturia-contexto')(_dbVirturia,
 app.use('/api',             require('./routes/portfolio'));
 app.use('/api',             require('./routes/clientes-web'));
 
-// ── Webhook InfinitePay + redirect curto ──────────────────
+// ── Webhooks externos ──────────────────────────────────────
 const { webhookInfinitePay, payRedirect } = require('./routes/pagamentos');
 app.post('/webhook/infinitepay', webhookInfinitePay);
+app.use('/webhook/chatwoot', require('./routes/chatwoot-webhook'));
 app.get('/pay/:id', payRedirect);
 
 // ── Health check ───────────────────────────────────────────
