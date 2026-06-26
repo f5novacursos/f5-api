@@ -21,19 +21,23 @@ const MIN_GAP = 50 * 60 * 1000;   // 50 min
 const MAX_GAP = 70 * 60 * 1000;   // 70 min
 
 // Estatística de mercados da célula ACIMA (Under/Over 2.5 e Ambas Sim)
-function novoStat() { return { n:0, under:0, over:0, ambas:0 }; }
+function novoStat() { return { n:0, under:0, over:0, over15:0, ambas:0 }; }
 function acumulaStat(s, a, b) {
   s.n++;
   const g = a + b;
   if (g <= 2) s.under++;
   if (g >= 3) s.over++;
+  if (g >= 2) s.over15++;
   if (a > 0 && b > 0) s.ambas++;
 }
+// Só os 2 mercados de maior taxa-base do virtual (RNG sem padrão preditivo):
+// OVER 1.5 (≥2 gols, base ~68% → M3 ~97%) e UNDER 2.5 (≤2 gols, base ~58% → M3 ~93%).
+// OVER 2.5 (~42%) e AMBAS SIM (~47%) são moeda — viravam os blocos de reds e foram cortados.
+// Validado em 12k jogos Betano com teste cego (26/06/2026). Ver memória reference_virtual_rng_sem_padrao.
 function melhorMercado(s) {
   return [
+    { m:'OVER 1.5',  p: Math.round(s.over15*100/s.n) },
     { m:'UNDER 2.5', p: Math.round(s.under*100/s.n) },
-    { m:'OVER 2.5',  p: Math.round(s.over*100/s.n) },
-    { m:'AMBAS SIM', p: Math.round(s.ambas*100/s.n) },
   ].sort((a, b) => b.p - a.p)[0];
 }
 
@@ -168,8 +172,10 @@ function calcularEntradas(porLiga, clockOffsetMs, { topN, minAmostra, minConf, g
 
 function mercadoBateu(mercado, a, b) {
   const g = a + b;
-  if (mercado.includes('UNDER')) return g <= 2;
-  if (mercado.includes('OVER'))  return g >= 3;
+  if (mercado === 'UNDER 2.5') return g <= 2;
+  if (mercado === 'UNDER 1.5') return g <= 1;
+  if (mercado === 'OVER 1.5')  return g >= 2;
+  if (mercado === 'OVER 2.5')  return g >= 3;
   return a > 0 && b > 0; // AMBAS SIM
 }
 
