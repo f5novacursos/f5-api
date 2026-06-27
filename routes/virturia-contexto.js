@@ -318,11 +318,6 @@ function dataHoraProvedor(ts, clockOffsetMs) {
 // Grava a foto de UMA hora-alvo (atual ou passada). Só a 1ª escrita vale (trava).
 // porLigaCache: reaproveita a carga do banco quando chamado em lote (backfill).
 async function gravarFotoHora(db, tabela, clockOffsetMs, provedor, alvoData, alvoHora, porLigaCache, origem = 'vivo') {
-  const { rows: ex } = await db.query(
-    `SELECT 1 FROM virturia_especial_snapshot WHERE provedor=$1 AND data=$2 AND hora_alvo=$3 LIMIT 1`,
-    [provedor, alvoData, alvoHora]
-  );
-  if (ex.length) return 0; // já fotografada → mantém travada
   // gatilho = hora anterior (a célula de baixo); vira o dia se alvo for 0h
   const gatilhoHora = (alvoHora + 23) % 24;
   let gatilhoData = alvoData;
@@ -332,8 +327,14 @@ async function gravarFotoHora(db, tabela, clockOffsetMs, provedor, alvoData, alv
   }
   const porLiga = porLigaCache || await carregarPorLigaSlot(db, tabela, SNAP_HORAS);
   let n = 0;
-  // grava os DOIS mercados (abas OVER 1.5 e UNDER 2.5), cada um com sua trava
+  // grava os DOIS mercados (abas OVER 1.5 e UNDER 2.5), cada um com sua trava independente
   for (const mercado of MERCADOS_ABA) {
+    // trava por mercado: OVER e UNDER têm fotos separadas — salvar um não bloqueia o outro
+    const { rows: ex } = await db.query(
+      `SELECT 1 FROM virturia_especial_snapshot WHERE provedor=$1 AND data=$2 AND hora_alvo=$3 AND mercado=$4 LIMIT 1`,
+      [provedor, alvoData, alvoHora, mercado]
+    );
+    if (ex.length) continue; // este mercado já fotografado → mantém travado
     const ligas = calcularEntradas(porLiga, clockOffsetMs, {
       topN: SNAP_TOP, minAmostra: SNAP_AMOSTRA, minConf: SNAP_CONF, gatilhoHora, gatilhoData, mercado
     });
