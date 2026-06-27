@@ -634,6 +634,10 @@ module.exports = function (db, tabela, clockOffsetMs = 0) {
     }
   });
 
+  // Índice composto — faz a varredura de 720h passar de seq scan para index scan (~30s → <1s)
+  db.query(`CREATE INDEX IF NOT EXISTS idx_${tabela}_slot_time ON ${tabela}(liga, slot_min, start_time)`)
+    .catch(e => console.error(`[idx ${tabela}]`, e.message));
+
   // Agendadores em background (1 por provedor): tira a foto da hora (trava)
   // e confere os acertos contra a Matrix. Aditivo — não afeta as rotas acima.
   initSnapTable(db).then(async () => {
