@@ -9,13 +9,17 @@ const db      = require('../db');
 router.get('/check/:phone', async (req, res) => {
   try {
     const telefone = (req.params.phone || '').replace(/\D/g, '');
-    if (!telefone) return res.json({ found: false });
+    if (telefone.length < 8) return res.json({ found: false });
 
+    // Casa pelos últimos 8 dígitos (miolo do número). Assim o filtro funciona
+    // mesmo quando o número salvo (Google Maps) difere do que chega no WhatsApp
+    // por 9º dígito, código do país ou formatação — evita a Ana responder prospecto.
+    const sufixo = telefone.slice(-8);
     const result = await db.query(
       `SELECT id FROM leads_prospectados
-       WHERE REGEXP_REPLACE(telefone, '[^0-9]', '', 'g') = $1
+       WHERE RIGHT(REGEXP_REPLACE(telefone, '[^0-9]', '', 'g'), 8) = $1
        LIMIT 1`,
-      [telefone]
+      [sufixo]
     );
     res.json({ found: result.rows.length > 0 });
   } catch (e) {
