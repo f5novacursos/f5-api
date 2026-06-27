@@ -30,15 +30,15 @@ function acumulaStat(s, a, b) {
   if (g >= 2) s.over15++;
   if (a > 0 && b > 0) s.ambas++;
 }
-// Só os 2 mercados de maior taxa-base do virtual (RNG sem padrão preditivo):
-// OVER 1.5 (≥2 gols, base ~68% → M3 ~97%) e UNDER 2.5 (≤2 gols, base ~58% → M3 ~93%).
-// OVER 2.5 (~42%) e AMBAS SIM (~47%) são moeda — viravam os blocos de reds e foram cortados.
-// Validado em 12k jogos Betano com teste cego (26/06/2026). Ver memória reference_virtual_rng_sem_padrao.
+// SÓ OVER 1.5 (≥2 gols) — mercado ÚNICO, a maior taxa-base do virtual (~68% → M3 ~97%).
+// Por que não mais o mix com UNDER 2.5: o virtual é RNG (gatilho não prevê), então alternar
+// over/under pelo gatilho só TROCAVA o mercado melhor pelo pior. Pior: o MIX dobra a exposição
+// — hora quente mata os UNDER, hora fria mata os OVER → sempre tem mercado morrendo em bloco
+// (25% das horas com 4+ erros no mix vs ~0-17% com mercado puro; validado no histórico 26/06).
+// OVER 1.5 tem maior base (94% real vs 91% do under) e suas horas ruins (frias) são mais raras.
+// OVER 2.5/AMBAS (~42/47%) são moeda e já estavam cortados. Ver reference_virtual_rng_sem_padrao.
 function melhorMercado(s) {
-  return [
-    { m:'OVER 1.5',  p: Math.round(s.over15*100/s.n) },
-    { m:'UNDER 2.5', p: Math.round(s.under*100/s.n) },
-  ].sort((a, b) => b.p - a.p)[0];
+  return { m:'OVER 1.5', p: Math.round(s.over15*100/s.n) };
 }
 
 // Deriva os mercados de um resultado
