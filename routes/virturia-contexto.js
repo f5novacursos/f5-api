@@ -53,9 +53,19 @@ function mercadosDe(ftA, ftB) {
   return m;
 }
 
+// ── Cache de porLiga (55s TTL) — evita varreduras simultâneas no banco
+// O snapshotHora (60s) e /melhores-entradas concorrentes usavam a mesma
+// query pesada em paralelo, causando timeout no segundo request.
+const _porLigaCache = {};
+const _porLigaTs    = {};
+const CACHE_TTL     = 55 * 1000;
+
 // ── Helpers compartilhados da engine de adjacência ──────────────────
 async function carregarPorLigaSlot(db, tabela, horas) {
-  const cutoff = Date.now() - horas * 3600000;
+  const key = `${tabela}|${horas}`;
+  const now = Date.now();
+  if (_porLigaCache[key] && now - _porLigaTs[key] < CACHE_TTL) return _porLigaCache[key];
+  const cutoff = now - horas * 3600000;
   const { rows } = await db.query(`
     SELECT liga, slot_min, ft_a, ft_b, ft_str, start_time
     FROM ${tabela}
@@ -71,6 +81,8 @@ async function carregarPorLigaSlot(db, tabela, horas) {
       a: parseInt(r.ft_a), b: parseInt(r.ft_b)
     });
   }
+  _porLigaCache[key] = porLiga;
+  _porLigaTs[key]    = now;
   return porLiga;
 }
 
