@@ -18,6 +18,19 @@ function notificarN8n(payload) {
   } catch(e) { console.error('[n8n reserva]', e.message); }
 }
 
+// GET /api/reservas/contagem?interesse=excel — contagem pública para o funil
+router.get('/contagem', async (req, res, next) => {
+  try {
+    const { interesse } = req.query;
+    if (!interesse) return res.json({ count: 0 });
+    const { rows } = await db.query(
+      "SELECT COUNT(*)::int AS count FROM reservas WHERE interesse ILIKE $1",
+      ['%' + interesse + '%']
+    );
+    res.json({ count: rows[0].count || 0 });
+  } catch (err) { next(err); }
+});
+
 // GET /api/reservas — listar reservas
 router.get('/', async (req, res, next) => {
   try {
