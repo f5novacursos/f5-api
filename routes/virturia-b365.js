@@ -836,4 +836,20 @@ router.get('/historico-acertos', async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
+// 💎 GET /api/virturia-b365/odds-altas — motor de VALUE (EV = odd live EasyCo × freq)
+// Mesmo motor da Betano (lib compartilhada), mas ROBÔ PRÓPRIO: tabela, ligas,
+// frequências e fuso da Bet365. EasyCo grava BST rotulado como UTC →
+// toRealUtcMs = -3600000 (UTC real); clockOffsetMs = +3600000 (relógio UK).
+// Nota: express_cup não cota gol0..gol6 — o 0-0 sai via u05 (alt na lib).
+router.get('/odds-altas', require('../lib/odds-altas')(db, 'virturia_resultados_b365', [
+  { sub: 'express_cup',               liga: 'express_cup',    provider: 'bet365' },
+  { sub: 'copa_do_mundo',             liga: 'copa_mundo',     provider: 'bet365' },
+  { sub: 'euro_cup',                  liga: 'euro_cup',       provider: 'bet365' },
+  { sub: 'super_liga_sul-americana',  liga: 'sul_americana',  provider: 'bet365' },
+  { sub: 'premiership',               liga: 'premier_league', provider: 'bet365' },
+], -3600000, 3600000));
+
+// 📊 GET /api/virturia-b365/odds-altas/historico — EV REALIZADO (paper-trading Bet365)
+router.get('/odds-altas/historico', require('../lib/odds-altas').historico(db, 'virturia_resultados_b365'));
+
 module.exports = router;
