@@ -668,9 +668,14 @@ router.get('/coletar', async (req, res) => {
 // POST /api/virturia/limpar — limpa registros por data (requer chave)
 router.post('/limpar', async (req, res, next) => {
   try {
-    const { chave, data } = req.body;
+    const { chave, data, liga } = req.body;
     if (chave !== 'virturia2026secret') return res.status(403).json({ ok: false, error: 'chave invalida' });
-    if (!data) return res.status(400).json({ ok: false, error: 'data obrigatoria (ex: 2026-06-15)' });
+    // Modo liga: apaga TODOS os registros de uma liga (p/ recoletar após corrigir a grade de slots)
+    if (liga) {
+      const r = await db.query(`DELETE FROM virturia_resultados WHERE liga = $1`, [liga]);
+      return res.json({ ok: true, deletados: r.rowCount, liga });
+    }
+    if (!data) return res.status(400).json({ ok: false, error: 'data ou liga obrigatoria' });
     const r = await db.query(
       `DELETE FROM virturia_resultados WHERE coletado_em >= $1::date AND coletado_em < ($1::date + interval '1 day')`,
       [data]
