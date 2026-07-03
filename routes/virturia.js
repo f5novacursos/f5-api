@@ -985,7 +985,7 @@ router.get('/historico-acertos', async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
-// GET /api/virturia/odds-altas — entradas diamante (0-0, 5+, total exato)
+// GET /api/virturia/odds-altas — motor de VALUE (EV = odd live EasyCo × freq)
 router.get('/odds-altas', require('../lib/odds-altas')(db, 'virturia_resultados', [
   { sub: 'brasil',              liga: 'brasileirao',   provider: 'betano' },
   { sub: 'copa-america',        liga: 'copa_america',  provider: 'betano' },
@@ -994,6 +994,10 @@ router.get('/odds-altas', require('../lib/odds-altas')(db, 'virturia_resultados'
   { sub: 'ligas-america',       liga: 'classicos',     provider: 'betano' },
   { sub: 'copa-das-estrelas',   liga: 'copa_estrelas', provider: 'betano' },
 ]));
+
+// GET /api/virturia/odds-altas/historico — EV REALIZADO do paper-trading
+// (o tracker grava cada flag de value antes do jogo e confere sozinho)
+router.get('/odds-altas/historico', require('../lib/odds-altas').historico(db, 'virturia_resultados'));
 
 // GET /api/virturia/betano-fetch?leagueId=204676&last=20
 // Proxy: Worker chama esta rota → VPS busca na Betano → devolve JSON
