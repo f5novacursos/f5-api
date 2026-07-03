@@ -604,6 +604,67 @@ module.exports = function (db, tabela, clockOffsetMs = 0) {
     }
   });
 
+  // ── GET /especial/clima-hora ────────────────────────────────────
+  // 🌡 Termômetro DESCRITIVO da hora atual: compara os jogos JÁ jogados
+  // nesta hora (relógio do provedor) com a base da janela de 30d.
+  // NÃO é previsão — calibrado em 03/07/2026 com 14.467 jogos reais:
+  // começo de hora quente NÃO esquenta o resto (under no resto 58,3%
+  // vs 57,3% nas horas normais — RNG). O que ele entrega é situação/
+  // anti-tilt: avisa quando o card da hora está sofrendo, em tempo real.
+  // Limiar z±2 sinaliza ~6% das horas (raro de verdade, não vira ruído).
+  router.get('/especial/clima-hora', auth, async (req, res) => {
+    try {
+      const porLiga = await carregarPorLigaSlot(db, tabela, SNAP_HORAS);
+      const agora = dataHoraProvedor(Date.now(), clockOffsetMs);
+      let n = 0, gols = 0, o15 = 0, u25 = 0;                 // hora atual
+      let bn = 0, bgols = 0, bg2 = 0, bo15 = 0, bu25 = 0;    // base 30d
+      const ligas = [];
+      for (const lg in porLiga) {
+        let ln = 0, lgols = 0, lbn = 0, lbgols = 0;
+        for (const slot in porLiga[lg]) for (const j of porLiga[lg][slot]) {
+          const g = j.a + j.b;
+          lbn++; lbgols += g; bg2 += g * g;
+          if (g >= 2) bo15++;
+          if (g <= 2) bu25++;
+          const d = new Date(j.ts + clockOffsetMs);
+          if (d.getUTCHours() === agora.hora && d.toISOString().slice(0, 10) === agora.data) {
+            ln++; lgols += g;
+            if (g >= 2) o15++;
+            if (g <= 2) u25++;
+          }
+        }
+        bn += lbn; bgols += lbgols; n += ln; gols += lgols;
+        if (ln >= 3 && lbn >= 50) {
+          const lm = lgols / ln, lb = lbgols / lbn;
+          ligas.push({ liga: lg, n: ln, media: +lm.toFixed(2), media_base: +lb.toFixed(2), delta: +(lm - lb).toFixed(2) });
+        }
+      }
+      const mediaBase = bn ? bgols / bn : null;
+      const sd = bn ? Math.sqrt(Math.max(0, bg2 / bn - mediaBase * mediaBase)) : null;
+      const media = n ? gols / n : null;
+      let z = null, clima = 'inicio';
+      if (n >= 6 && sd) {
+        z = (media - mediaBase) / (sd / Math.sqrt(n));
+        clima = z >= 2 ? 'quente' : z >= 1.3 ? 'aquecendo'
+              : z <= -2 ? 'fria'  : z <= -1.3 ? 'esfriando' : 'normal';
+      }
+      // ligas mais fora da curva primeiro (pro front listar as 2-3 piores)
+      ligas.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+      res.json({
+        ok: true, data: agora.data, hora: agora.hora, n,
+        media: media != null ? +media.toFixed(2) : null,
+        media_base: mediaBase != null ? +mediaBase.toFixed(2) : null,
+        z: z != null ? +z.toFixed(2) : null, clima,
+        over15:  { hits: o15, pct: n ? Math.round(o15 * 100 / n) : null, base: bn ? Math.round(bo15 * 100 / bn) : null },
+        under25: { hits: u25, pct: n ? Math.round(u25 * 100 / n) : null, base: bn ? Math.round(bu25 * 100 / bn) : null },
+        ligas: ligas.slice(0, 4)
+      });
+    } catch (e) {
+      console.error('[especial/clima-hora]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── GET /especial/historico?horas=48 ────────────────────────────
   // Placar acumulado (verde/vermelho) das fotos das últimas N horas.
   router.get('/especial/historico', auth, async (req, res) => {
