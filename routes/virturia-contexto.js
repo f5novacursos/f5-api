@@ -21,7 +21,7 @@ const MIN_GAP = 50 * 60 * 1000;   // 50 min
 const MAX_GAP = 70 * 60 * 1000;   // 70 min
 
 // Estatística de mercados da célula ACIMA (Under/Over 2.5 e Ambas Sim)
-function novoStat() { return { n:0, under:0, over:0, over15:0, over35:0, ambas:0 }; }
+function novoStat() { return { n:0, under:0, over:0, over15:0, over35:0, ambas:0, zero:0 }; }
 function acumulaStat(s, a, b) {
   s.n++;
   const g = a + b;
@@ -30,6 +30,7 @@ function acumulaStat(s, a, b) {
   if (g >= 2) s.over15++;
   if (g >= 4) s.over35++;
   if (a > 0 && b > 0) s.ambas++;
+  if (g === 0) s.zero++;
 }
 // Mercado PURO por aba (26/06/2026): OVER 1.5 (≥2 gols, base ~68%) e UNDER 2.5 (≤2 gols, ~58%)
 // viram ABAS SEPARADAS — o usuário joga um mercado puro por vez. Mercado puro corta os blocos de
@@ -118,7 +119,7 @@ function entradaDoSlot(slot, arr, idxGat, stat1, stat2, clockOffsetMs, minAmostr
   const s1 = stat1[slot + '|' + ult.ft];
   if (s1 && s1.n >= minAmostra) {
     const b = melhorMercado(s1, mercado);
-    opcoes.push({ tipo:'seq1', gatilho: ult.ft, mercado: b.m, pct: b.p, amostra: s1.n, over25: Math.round(s1.over*100/s1.n), over35: Math.round(s1.over35*100/s1.n), ambas: Math.round(s1.ambas*100/s1.n) });
+    opcoes.push({ tipo:'seq1', gatilho: ult.ft, mercado: b.m, pct: b.p, amostra: s1.n, over25: Math.round(s1.over*100/s1.n), over35: Math.round(s1.over35*100/s1.n), ambas: Math.round(s1.ambas*100/s1.n), zero: Math.round(s1.zero*100/s1.n) });
   }
   if (idxGat >= 1) {
     const pen = arr[idxGat - 1];
@@ -126,7 +127,7 @@ function entradaDoSlot(slot, arr, idxGat, stat1, stat2, clockOffsetMs, minAmostr
       const s2 = stat2[slot + '||' + pen.ft + '>' + ult.ft];
       if (s2 && s2.n >= minAmostra) {
         const b = melhorMercado(s2, mercado);
-        opcoes.push({ tipo:'seq2', gatilho: pen.ft + '>' + ult.ft, mercado: b.m, pct: b.p, amostra: s2.n, over25: Math.round(s2.over*100/s2.n), over35: Math.round(s2.over35*100/s2.n), ambas: Math.round(s2.ambas*100/s2.n) });
+        opcoes.push({ tipo:'seq2', gatilho: pen.ft + '>' + ult.ft, mercado: b.m, pct: b.p, amostra: s2.n, over25: Math.round(s2.over*100/s2.n), over35: Math.round(s2.over35*100/s2.n), ambas: Math.round(s2.ambas*100/s2.n), zero: Math.round(s2.zero*100/s2.n) });
       }
     }
   }
@@ -134,9 +135,9 @@ function entradaDoSlot(slot, arr, idxGat, stat1, stat2, clockOffsetMs, minAmostr
   opcoes.sort((a, b) => b.pct - a.pct || b.amostra - a.amostra);
   const win = opcoes[0];
   if (win.pct < minConf) return null;
-  // over25/over35/ambas: taxas BRUTAS (OVER 2.5, OVER 3.5, AMBAS SIM) no MESMO gatilho/slot
-  // que venceu — informativo (não é sinal de entrada; aba RAIO-X mostra ao lado do OVER 1.5)
-  return { slot:+slot, gatilho: win.gatilho, tipo: win.tipo, mercado: win.mercado, pct: win.pct, amostra: win.amostra, hora_alvo: horaAlvo, over25: win.over25, over35: win.over35, ambas: win.ambas };
+  // over25/over35/ambas/zero: taxas BRUTAS (OVER 2.5, OVER 3.5, AMBAS SIM, 0-0) no MESMO
+  // gatilho/slot que venceu — informativo (aba RAIO-X escolhe o mais forte entre os 4)
+  return { slot:+slot, gatilho: win.gatilho, tipo: win.tipo, mercado: win.mercado, pct: win.pct, amostra: win.amostra, hora_alvo: horaAlvo, over25: win.over25, over35: win.over35, ambas: win.ambas, zero: win.zero };
 }
 
 // Calcula as entradas por liga (top N por confiança, em ordem de slot).
@@ -307,6 +308,7 @@ function initSnapTable(db) {
     await db.query(`ALTER TABLE virturia_especial_snapshot ADD COLUMN IF NOT EXISTS over25 INTEGER`);
     await db.query(`ALTER TABLE virturia_especial_snapshot ADD COLUMN IF NOT EXISTS over35 INTEGER`);
     await db.query(`ALTER TABLE virturia_especial_snapshot ADD COLUMN IF NOT EXISTS ambas INTEGER`);
+    await db.query(`ALTER TABLE virturia_especial_snapshot ADD COLUMN IF NOT EXISTS zero INTEGER`);
     // migração 26/06/2026: UNIQUE passa a incluir `mercado` — as abas OVER 1.5 e UNDER 2.5
     // gravam os DOIS mercados no mesmo slot (cada um com sua trava e histórico). Dropa a
     // UNIQUE antiga (sem mercado) e cria a nova. Idempotente.
@@ -360,10 +362,10 @@ async function gravarFotoHora(db, tabela, clockOffsetMs, provedor, alvoData, alv
       for (const e of ligas[lg]) {
         const r = await db.query(`
           INSERT INTO virturia_especial_snapshot
-            (provedor, data, hora_alvo, liga, slot, gatilho, tipo, mercado, pct, amostra, origem, forca, over25, over35, ambas)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            (provedor, data, hora_alvo, liga, slot, gatilho, tipo, mercado, pct, amostra, origem, forca, over25, over35, ambas, zero)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
           ON CONFLICT (provedor, data, hora_alvo, liga, slot, mercado) DO NOTHING
-        `, [provedor, alvoData, alvoHora, lg, e.slot, e.gatilho, e.tipo, e.mercado, e.pct, e.amostra, origem, e.forca ?? null, e.over25 ?? null, e.over35 ?? null, e.ambas ?? null]);
+        `, [provedor, alvoData, alvoHora, lg, e.slot, e.gatilho, e.tipo, e.mercado, e.pct, e.amostra, origem, e.forca ?? null, e.over25 ?? null, e.over35 ?? null, e.ambas ?? null, e.zero ?? null]);
         n += r.rowCount;
       }
     }
@@ -590,7 +592,7 @@ module.exports = function (db, tabela, clockOffsetMs = 0) {
       const data = agora.toISOString().slice(0, 10);
       const mercado = req.query.mercado === 'UNDER 2.5' ? 'UNDER 2.5' : 'OVER 1.5';
       const { rows } = await db.query(`
-        SELECT liga, slot, gatilho, tipo, mercado, pct, amostra, resultado, acerto, forca, over25, over35, ambas
+        SELECT liga, slot, gatilho, tipo, mercado, pct, amostra, resultado, acerto, forca, over25, over35, ambas, zero
         FROM virturia_especial_snapshot
         WHERE provedor=$1 AND data=$2 AND hora_alvo=$3 AND mercado=$4
         ORDER BY liga, slot
@@ -600,7 +602,7 @@ module.exports = function (db, tabela, clockOffsetMs = 0) {
         (ligas[r.liga] = ligas[r.liga] || []).push({
           slot: r.slot, gatilho: r.gatilho, tipo: r.tipo, mercado: r.mercado,
           pct: r.pct, amostra: r.amostra, hora_alvo: horaViva, forca: r.forca,
-          over25: r.over25, over35: r.over35, ambas: r.ambas,
+          over25: r.over25, over35: r.over35, ambas: r.ambas, zero: r.zero,
           resultado: r.resultado, acerto: r.acerto
         });
       }
