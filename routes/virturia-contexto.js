@@ -255,6 +255,13 @@ const PISO_MERCADO = { 'AMBAS SIM': 80 };
 //    express_cup|UNDER 2.5 → 98% (831 entradas)
 //    copa_mundo|AMBAS SIM  → 96%
 //    euro|OVER 2.5 >=70    → 100% (piso 70 já cobre)
+//
+//  Eixo de gols na Especial — calibrado 08/07/2026 com 120h de M3 real (varredura):
+//  liga de ALTO gol jogando UNDER (e vice-versa) concentra os reds da aba.
+//    british_derbies|UNDER 2.5 → 85,2% geral e >=80 NÃO separa (85%, 17/20) → VETADO
+//    scudetto|UNDER 2.5        → 86,2% geral, mas >=80 = 100% (13/13) → piso 80
+//    liga_espanhola|UNDER 2.5  → 88,1% geral, mas >=80 = 100% (15/15) → piso 80
+//    express_cup|OVER 1.5      → 89,7% geral (39% dos reds do OVER b365), >=80 = 94,5% → piso 80
 const PISO_LIGA_MERCADO = {
   'premier_league|OVER 2.5':  999, // VETADO — 59%
   'copa_america|OVER 2.5':    999, // VETADO — 76%, piora com piso
@@ -265,6 +272,10 @@ const PISO_LIGA_MERCADO = {
   'brasileirao|AMBAS SIM':    999, // VETADO — 65%, piso 80 piora
   'premier_league|AMBAS SIM': 999, // VETADO — 75%
   'sul_americana|AMBAS SIM':  999, // VETADO — 71%
+  'british_derbies|UNDER 2.5': 999, // VETADO — alto gol, >=80 não separa
+  'scudetto|UNDER 2.5':         80, // alto gol — só entra confiança alta
+  'liga_espanhola|UNDER 2.5':   80, // alto gol — só entra confiança alta
+  'express_cup|OVER 1.5':       80, // baixo gol — só entra confiança alta
 };
 
 function pisoDe(mercado, minConf, liga) {
