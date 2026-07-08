@@ -623,7 +623,7 @@ router.get('/previsao', require('../lib/previsao')(db, 'virturia_resultados', {
     { sub: 'euro',                liga: 'euro' },
     { sub: 'campeonato-italiano', liga: 'italiano' },
     { sub: 'copa-das-estrelas',   liga: 'copa_estrelas' },
-    { sub: 'ligas-america',       liga: 'classicos' },
+    { sub: 'classicos-da-america', liga: 'classicos' }, // fix 08/07: 'ligas-america' era OUTRA liga (seleções) — mesmo bug da odds-altas
     { sub: 'british-derbies',     liga: 'british_derbies' },
     { sub: 'liga-espanhola',      liga: 'liga_espanhola' },
     { sub: 'scudetto-italiano',   liga: 'scudetto' },
@@ -991,7 +991,7 @@ router.get('/odds-altas', require('../lib/odds-altas')(db, 'virturia_resultados'
   { sub: 'copa-america',        liga: 'copa_america',  provider: 'betano' },
   { sub: 'euro',                liga: 'euro',          provider: 'betano' },
   { sub: 'campeonato-italiano', liga: 'italiano',      provider: 'betano' },
-  { sub: 'ligas-america',       liga: 'classicos',     provider: 'betano' },
+  { sub: 'classicos-da-america', liga: 'classicos',    provider: 'betano' }, // fix 08/07: 'ligas-america' era OUTRA liga (seleções, 0-0 @21-34) → EV fantasma
   { sub: 'copa-das-estrelas',   liga: 'copa_estrelas', provider: 'betano' },
 ]));
 
