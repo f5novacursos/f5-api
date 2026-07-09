@@ -124,14 +124,23 @@ que responde igual, só then desligar o antigo.
 - [x] Testado `/api/virturia/resultados` → dados reais batendo (`total: 1071`), banco
       conectando certinho
 
-### Fase 3 — Banco de dados (não bloqueia o resto, pode ser feito depois)
-- [ ] Levantar quais tabelas no Postgres do `f5-api` pertencem ao VirtuIA (checar
-      `migration.sql` do f5-api — prováveis: `virturia_resultados`, `virturia_resultados_b365`,
-      tabelas de admin/auth/objetivo)
-- [ ] Decidir: migrar pro banco `virturia-db` que já existe no Coolify, ou manter
-      compartilhado por enquanto (funciona, só não é o ideal)
-- [ ] Se migrar: dump das tabelas específicas → restore no `virturia-db` → trocar
-      `DATABASE_URL` do backend novo
+### Fase 3 — Banco de dados ✅ CONCLUÍDO (09/07/2026)
+- [x] Levantadas as 8 tabelas do VirtuIA (grep no código do `virturia-api`):
+      `virturia_resultados` (98k), `virturia_resultados_b365` (105k), `virturia_usuarios`,
+      `virturia_objetivo_dia/entrada/plano`, `virturia_odds_value_snapshot` (27k),
+      `virturia_especial_snapshot` (47k)
+- [x] Migrado pro `virturia-db` do Coolify (postgres:18-alpine, host interno
+      `xvlwjjvoi4itgi0iucjgcw93`): app parado → `pg_dump -t` das 8 tabelas (39MB) →
+      restore via `psql` → contagens conferidas
+- [x] `DATABASE_URL` do `virturia-api` trocada pra URL interna do `virturia-db` + redeploy.
+      (Gotcha: no Coolify o campo de valor da env var NÃO leva o prefixo `KEY=` — colar só
+      o valor, senão dá `getaddrinfo EAI_AGAIN`)
+- [x] Verificado: `/api/virturia/resultados` e `/api/virturia-b365/resultados` servindo do
+      banco novo; coletor b365 rodando e salvando (`collector-status` ok, lastError null)
+- [x] Dump temporário `/tmp/virturia_dump.sql` removido do servidor
+- [ ] **Depois (alguns dias de estabilidade):** dropar as tabelas `virturia_*` antigas do
+      banco `f5nova` da escola — elas ficaram lá como backup natural. Comando:
+      `docker exec vzsaov2vqg6vs1e6vr582v2k psql -U postgres -d f5nova -c "DROP TABLE IF EXISTS virturia_resultados, virturia_resultados_b365, virturia_usuarios, virturia_objetivo_dia, virturia_objetivo_entrada, virturia_objetivo_plano, virturia_odds_value_snapshot, virturia_especial_snapshot;"`
 
 ### Fase 4 — Apontar o frontend pro backend novo ✅ CONCLUÍDO (09/07/2026)
 - [x] Trocadas as 7 ocorrências de `https://api.f5novacursos.com.br` pra
@@ -170,15 +179,15 @@ que responde igual, só then desligar o antigo.
   validado.
 
 ## Estado atual
-**Separação de código e deploy CONCLUÍDA em 09/07/2026** (Fases 0, 1, 2, 4 e 5). O VirtuIA
-roda 100% fora do `f5-api`: repo próprio (`virturia-api`), app próprio no Coolify
-(`virturia-api`, ex-`virturia-backend`), domínio `http://virturia-api.2.24.108.140.sslip.io`.
-Zero rota `/api/virturia*` no `f5-api` (dá 404).
+**Separação CONCLUÍDA em 09/07/2026** (Fases 0 a 5 — código, deploy E banco). O VirtuIA
+roda 100% fora do F5 Nova Cursos: repo próprio (`virturia-api`), app próprio no Coolify,
+banco próprio (`virturia-db`), domínio `http://virturia-api.2.24.108.140.sslip.io`.
+Zero rota `/api/virturia*` no `f5-api` (dá 404), zero dependência do Postgres da escola.
 
 **O que falta:**
-- **Fase 3** — banco ainda é o MESMO Postgres do f5-api (só a `DATABASE_URL` compartilhada).
-  Migrar as tabelas `virturia_*` pro `virturia-db` do Coolify quando quiser.
 - **Fase 6** — domínio próprio (quando comprar). Lembrar: trocar as URLs no frontend de novo
   (7 ocorrências em index.html/admin-db.html/login.html/padroes.html) e gerar certificado TLS.
+- Dropar as tabelas `virturia_*` antigas do banco `f5nova` (ver checkbox na Fase 3) depois
+  de alguns dias de estabilidade.
 - Fase 0 pendência: confirmar remoção do aviso do Google Search Console.
 - Backend Python antigo (`virturia/backend`) ficou obsoleto — pode arquivar/apagar depois.
