@@ -184,7 +184,17 @@ roda 100% fora do F5 Nova Cursos: repo próprio (`virturia-api`), app próprio n
 banco próprio (`virturia-db`), domínio `http://virturia-api.2.24.108.140.sslip.io`.
 Zero rota `/api/virturia*` no `f5-api` (dá 404), zero dependência do Postgres da escola.
 
+**⚠️ Descoberta pós-separação (09/07/2026 à noite):** o Cloudflare Worker `betano-proxy`
+(`worker.js`) NÃO estava desativado — é ele quem coleta o Betano (via EasyCoAnalytics) e
+salva via `POST /api/virturia/salvar`. Quando as rotas saíram do f5-api, a coleta do Betano
+parou (Matrix vazia). **Corrigido:** `const API` do worker trocada pro backend novo +
+`npx wrangler deploy` — coleta voltou e o snapshot da EasyCo preencheu o buraco da tarde
+(8h de grade completa de volta). O worker do Bet365 (`bet365-proxy`) esse sim é obsoleto
+(coletor roda dentro do virturia-api), mas ainda existe no Cloudflare batendo em 404 —
+apagar quando quiser: `npx wrangler delete --config wrangler-b365.toml` na pasta virturia.
+
 **O que falta:**
+- Apagar o worker `bet365-proxy` do Cloudflare (obsoleto, ver acima).
 - **Fase 6** — domínio próprio (quando comprar). Lembrar: trocar as URLs no frontend de novo
   (7 ocorrências em index.html/admin-db.html/login.html/padroes.html) e gerar certificado TLS.
 - Dropar as tabelas `virturia_*` antigas do banco `f5nova` (ver checkbox na Fase 3) depois
