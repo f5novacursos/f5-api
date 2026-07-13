@@ -21,6 +21,8 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '25mb' }));
 
+const adminAuth = require('./middleware/adminAuth');
+
 // ── Rotas ──────────────────────────────────────────────────
 app.use('/api/turmas',      require('./routes/turmas'));
 app.use('/api/alunos',      require('./routes/alunos'));
@@ -31,10 +33,10 @@ app.use('/api/certificado', require('./routes/certificados'));
 app.use('/api/aulas',       require('./routes/aulas'));
 app.use('/api/interessados', require('./routes/interessados'));
 app.use('/api/frequencia',  require('./routes/frequencia'));
-app.use('/api/financeiro',  require('./routes/financeiro'));
+app.use('/api/financeiro',  adminAuth, require('./routes/financeiro'));
 app.use('/api/contato',     require('./routes/contato'));
 app.use('/api/ead',         require('./routes/ead'));
-app.use('/api/lixeira',     require('./routes/lixeira'));
+app.use('/api/lixeira',     adminAuth, require('./routes/lixeira'));
 app.use('/api/debounce',    require('./routes/debounce'));
 app.use('/api/leads',       require('./routes/leads'));
 app.use('/api/planos',      require('./routes/planos'));
