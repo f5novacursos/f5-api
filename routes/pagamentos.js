@@ -1,10 +1,20 @@
-const router = require('express').Router();
-const db     = require('../db');
+const router    = require('express').Router();
+const db        = require('../db');
+const nodemailer = require('nodemailer');
+
+function _mailTransporter() {
+  if (!process.env.GMAIL_USER || !process.env.GMAIL_PASS) return null;
+  return nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_PASS } });
+}
+const BASE_URL_EAD = process.env.BASE_URL_EAD || 'https://f5novacursos.com.br/ead.html';
 
 /* Auto-migration: coluna checkout_url em alunos */
 (async () => {
   try {
     await db.query("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS checkout_url VARCHAR(600)");
+    await db.query("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS valor_restante VARCHAR(20)");
+    await db.query("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS prox_pgto DATE");
+    await db.query("ALTER TABLE alunos ADD COLUMN IF NOT EXISTS obs TEXT");
   } catch (e) { console.warn('[pagamentos] migration:', e.message); }
 })();
 
@@ -140,6 +150,98 @@ async function webhookInfinitePay(req, res) {
 
     if (!order_nsu) return res.status(400).json({ error: 'order_nsu ausente' });
 
+    // ── FLUXO EAD (order_nsu começa com 'ead-mat-') ──────────────
+    if (String(order_nsu).startsWith('ead-mat-')) {
+      const { rows: mats } = await db.query(
+        'SELECT * FROM ead_matriculas WHERE order_nsu=$1',
+        [order_nsu]
+      );
+
+      if (!mats.length) {
+        console.warn('[Webhook EAD] Matrícula não encontrada para order_nsu:', order_nsu);
+        return res.status(200).json({ ok: true });
+      }
+
+      await db.query(
+        `UPDATE ead_matriculas SET
+           status          = 'ativa',
+           transaction_nsu = $1,
+           receipt_url     = $2
+         WHERE order_nsu = $3`,
+        [transaction_nsu || '', receipt_url || '', order_nsu]
+      );
+
+      console.log(`[Webhook EAD] Matrícula ativada - order_nsu: ${order_nsu}`);
+
+      // Email "acesso liberado" + WhatsApp via n8n
+      const mat = mats[0];
+      try {
+        let nome = '', telefone = '', curso = '';
+        if (mat.usuario_id) {
+          const { rows: u } = await db.query(
+            `SELECT u.nome, u.telefone, c.titulo AS curso
+               FROM ead_usuarios u
+               JOIN ead_matriculas m ON m.usuario_id = u.id
+               JOIN ead_cursos c ON c.id = m.curso_id
+              WHERE m.id = $1`, [mat.id]);
+          if (u.length) {
+            nome = u[0].nome; telefone = u[0].telefone || ''; curso = u[0].curso;
+            // Email acesso liberado
+            const tr = _mailTransporter();
+            if (tr && u[0].email) {
+              tr.sendMail({
+                from: `"F5 Nova Cursos" <${process.env.GMAIL_USER}>`,
+                to: u[0].email,
+                subject: `✅ Acesso liberado — ${curso}`,
+                html: `
+<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#0c1729;color:#e8eaf0;border-radius:12px;overflow:hidden">
+  <div style="background:#f3ad1c;padding:20px 28px;text-align:center">
+    <span style="font-size:2rem;font-weight:900;color:#0c1729;letter-spacing:.04em">F5 NOVA CURSOS</span>
+  </div>
+  <div style="padding:32px 28px">
+    <p style="font-size:1.1rem;font-weight:700;margin:0 0 8px">Pagamento confirmado! 🎉</p>
+    <p style="color:#a0aec0;margin:0 0 24px">Olá, ${nome.split(' ')[0]}! Seu acesso ao curso está liberado. Acesse agora com os dados abaixo.</p>
+    <div style="background:#131f35;border-radius:8px;padding:16px 20px;margin-bottom:24px">
+      <p style="margin:0 0 8px;font-size:.85rem;color:#a0aec0">Curso</p>
+      <p style="margin:0 0 16px;font-weight:700">${curso}</p>
+      <p style="margin:0 0 4px;font-size:.85rem;color:#a0aec0">Login</p>
+      <p style="margin:0;font-weight:700">${u[0].email}</p>
+      <p style="margin:8px 0 0;font-size:.78rem;color:#4a5568">Senha: a que você criou no cadastro</p>
+    </div>
+    <a href="${BASE_URL_EAD}" style="display:block;background:#f3ad1c;color:#0c1729;text-align:center;padding:14px;border-radius:8px;font-weight:800;font-size:1rem;text-decoration:none">Acessar Meu Curso →</a>
+  </div>
+</div>`
+              }).catch(e => console.error('[Webhook EAD email]', e.message));
+            }
+          }
+        } else if (mat.aluno_id) {
+          const { rows: a } = await db.query(
+            `SELECT a.nome, a.whatsapp AS telefone, c.titulo AS curso
+               FROM alunos a
+               JOIN ead_matriculas m ON m.aluno_id = a.id
+               JOIN ead_cursos c ON c.id = m.curso_id
+              WHERE m.id = $1`, [mat.id]);
+          if (a.length) { nome = a[0].nome; telefone = a[0].telefone || ''; curso = a[0].curso; }
+        }
+        if (telefone) {
+          fetch('https://n8n.f5novacursos.com.br/webhook/f5nova-matricula-confirmada', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nome,
+              whatsapp: '55' + telefone.replace(/\D/g, ''),
+              curso,
+              aluno_id: mat.usuario_id || mat.aluno_id,
+              tipo: 'ead'
+            })
+          }).catch(e => console.error('[n8n EAD matricula]', e.message));
+        }
+      } catch (e) { console.error('[n8n EAD] erro ao buscar dados:', e.message); }
+
+      return res.status(200).json({ ok: true });
+    }
+
+    // ── FLUXO PRESENCIAL (aluno acadêmico) ───────────────────────
     const { rows } = await db.query('SELECT * FROM alunos WHERE order_nsu=$1', [order_nsu]);
     if (!rows.length) {
       console.warn('[Webhook] Aluno não encontrado para order_nsu:', order_nsu);
@@ -158,6 +260,19 @@ async function webhookInfinitePay(req, res) {
     );
 
     console.log(`[Webhook] Aluno ativado - order_nsu: ${order_nsu}`);
+
+    // Notificar n8n — Confirmação de Matrícula
+    fetch('https://n8n.f5novacursos.com.br/webhook/f5nova-matricula-confirmada', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nome:     rows[0].nome,
+        whatsapp: '55' + rows[0].whatsapp.replace(/\D/g, ''),
+        curso:    rows[0].curso,
+        aluno_id: rows[0].id
+      })
+    }).catch(e => console.error('[n8n matricula]', e.message));
+
     res.status(200).json({ ok: true });
   } catch (err) {
     console.error('[Webhook] Erro:', err);

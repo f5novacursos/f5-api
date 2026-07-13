@@ -62,7 +62,7 @@ router.post('/salvar', async (req, res, next) => {
       const ftA = Number(r.scoreA)||0, ftB = Number(r.scoreB)||0;
       const htA = r.htA!=null?Number(r.htA):null, htB = r.htB!=null?Number(r.htB):null;
       const d = new Date(r.startTime);
-      const dBRT = new Date(d.getTime() + 1*3600000); // BST = UTC+1
+      const dBRT = new Date(d.getTime() - 3*3600000);
       const hora = dBRT.getUTCHours(), minuto = dBRT.getUTCMinutes();
       const ligaSlots = SLOTS[r.liga] || SLOTS['liga1_b365'];
       let slotIdx=0, minDiff=99;
@@ -241,16 +241,6 @@ router.get('/padroes-auto', async (req, res, next) => {
       .slice(0, 100);
 
     res.json({ ok: true, total: final.length, horas: Number(horas), padroes: final });
-  } catch(e) { next(e); }
-});
-
-// POST /api/virturia-b365/limpar
-router.post('/limpar', async (req, res, next) => {
-  try {
-    const { chave } = req.body;
-    if (chave !== 'virturia2026secret') return res.status(403).json({ error: 'Chave inválida' });
-    await db.query('DELETE FROM virturia_resultados_b365');
-    res.json({ ok: true, msg: 'Tabela limpa com sucesso' });
   } catch(e) { next(e); }
 });
 

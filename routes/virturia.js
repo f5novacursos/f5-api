@@ -379,4 +379,5 @@ router.get('/trigger', async (req, res) => {
   }
 });
 
+router.get(`/betano-fetch`,async(req,res)=>{try{const{leagueId,last=20}=req.query;if(!leagueId)return res.status(400).json({ok:false});const r=await fetch(`https://betano.bet.br/api/virtuals/resultsdata/?leagueId=${leagueId}&last=${last}`,{headers:HDR});if(!r.ok)return res.status(r.status).json({ok:false,error:`HTTP ${r.status}`});res.json(await r.json());}catch(e){res.status(500).json({ok:false,error:e.message});}});
 module.exports = router;

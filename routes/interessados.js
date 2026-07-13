@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db');
+const lixeira = require('../lib/lixeira');
 
 async function migrate() {
   await pool.query(`
@@ -54,8 +55,23 @@ router.post('/', async (req, res) => {
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
+// DELETE /api/interessados/:id — manda o lead pra Lixeira.
+// ?silencioso=1 pula a lixeira (usado pelo "mover entre abas" do painel, que
+// recria o lead noutra aba e apaga o antigo — não é uma exclusão de verdade).
 router.delete('/:id', async (req, res) => {
   try {
+    const silencioso = req.query.silencioso === '1' || req.query.silencioso === 'true';
+    if (!silencioso) {
+      const { rows } = await pool.query('SELECT * FROM interessados WHERE id = $1', [req.params.id]);
+      if (rows.length) {
+        const l = rows[0];
+        await lixeira.guardar({
+          entidade: 'interessado', ref_id: l.id, por: req,
+          rotulo: `Lead ${l.nome || ''} — ${l.curso || ''}`.trim(),
+          dados: l,
+        });
+      }
+    }
     await pool.query('DELETE FROM interessados WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ erro: e.message }); }

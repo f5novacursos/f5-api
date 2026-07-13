@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
+const lixeira = require('../lib/lixeira');
 
 /* ── Auto-migration ──────────────────────────────────────── */
 db.query(`
@@ -83,7 +84,18 @@ router.post('/recorrentes', async (req, res) => {
 /* ── DELETE /api/financeiro/recorrentes/:id — remove template ─ */
 router.delete('/recorrentes/:id', async (req, res) => {
   try {
-    await db.query('UPDATE financeiro_recorrente SET ativo=false WHERE id=$1', [req.params.id]);
+    const { rows } = await db.query(
+      'UPDATE financeiro_recorrente SET ativo=false WHERE id=$1 AND ativo=true RETURNING *',
+      [req.params.id]
+    );
+    if (rows.length) {
+      const r = rows[0];
+      await lixeira.guardar({
+        entidade: 'financeiro_recorrente', ref_id: r.id, por: req,
+        rotulo: `Despesa recorrente ${r.descricao || r.categoria || ''}`.trim(),
+        dados: r,
+      });
+    }
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ erro: err.message }); }
 });
@@ -293,9 +305,15 @@ router.put('/:id', async (req, res) => {
 /* ── DELETE /api/financeiro/:id ──────────────────────────── */
 router.delete('/:id', async (req, res) => {
   try {
-    const { rows } = await db.query('DELETE FROM financeiro WHERE id=$1 RETURNING id', [req.params.id]);
+    const { rows } = await db.query('DELETE FROM financeiro WHERE id=$1 RETURNING *', [req.params.id]);
     if (!rows.length) return res.status(404).json({ erro: 'Não encontrado' });
-    res.json({ ok: true, id: rows[0].id });
+    const f = rows[0];
+    await lixeira.guardar({
+      entidade: 'financeiro', ref_id: f.id, por: req,
+      rotulo: `${f.tipo === 'receita' ? 'Receita' : 'Despesa'} ${f.descricao || f.categoria || ''}`.trim(),
+      dados: f,
+    });
+    res.json({ ok: true, id: f.id });
   } catch (err) { res.status(500).json({ erro: err.message }); }
 });
 

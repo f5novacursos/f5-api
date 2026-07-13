@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
+const lixeira = require('../lib/lixeira');
 
 /* Auto-migration — cria tabela e adiciona colunas novas se não existirem */
 db.query(`
@@ -134,11 +135,17 @@ router.put('/clientes-web/:id', async (req, res) => {
   }
 });
 
-/* DELETE /api/clientes-web/:id */
+/* DELETE /api/clientes-web/:id — manda o cliente web pra Lixeira */
 router.delete('/clientes-web/:id', async (req, res) => {
   try {
-    const { rowCount } = await db.query('DELETE FROM clientes_web WHERE id = $1', [Number(req.params.id)]);
-    if (!rowCount) return res.status(404).json({ erro: 'Cliente não encontrado.' });
+    const { rows } = await db.query('DELETE FROM clientes_web WHERE id = $1 RETURNING *', [Number(req.params.id)]);
+    if (!rows.length) return res.status(404).json({ erro: 'Cliente não encontrado.' });
+    const c = rows[0];
+    await lixeira.guardar({
+      entidade: 'cliente_web', ref_id: c.id, por: req,
+      rotulo: `Cliente web ${c.nome || c.empresa || ''}`.trim(),
+      dados: c,
+    });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ erro: err.message });

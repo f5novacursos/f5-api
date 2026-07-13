@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
 const https = require('https');
+const lixeira = require('../lib/lixeira');
 
 function notificarN8n(payload) {
   try {
@@ -16,6 +17,19 @@ function notificarN8n(payload) {
     req.end();
   } catch(e) { console.error('[n8n reserva]', e.message); }
 }
+
+// GET /api/reservas/contagem?interesse=excel — contagem pública para o funil
+router.get('/contagem', async (req, res, next) => {
+  try {
+    const { interesse } = req.query;
+    if (!interesse) return res.json({ count: 0 });
+    const { rows } = await db.query(
+      "SELECT COUNT(*)::int AS count FROM reservas WHERE interesse ILIKE $1",
+      ['%' + interesse + '%']
+    );
+    res.json({ count: rows[0].count || 0 });
+  } catch (err) { next(err); }
+});
 
 // GET /api/reservas — listar reservas
 router.get('/', async (req, res, next) => {
@@ -102,10 +116,19 @@ router.post('/:id/converter', async (req, res, next) => {
   }
 });
 
-// DELETE /api/reservas/:id — excluir reserva
+// DELETE /api/reservas/:id — manda a reserva pra Lixeira
 router.delete('/:id', async (req, res, next) => {
   try {
-    await db.query('DELETE FROM reservas WHERE id=$1', [req.params.id]);
+    const { rows } = await db.query('SELECT * FROM reservas WHERE id=$1', [req.params.id]);
+    if (rows.length) {
+      const r = rows[0];
+      await lixeira.guardar({
+        entidade: 'reserva', ref_id: r.id, por: req,
+        rotulo: `Reserva ${r.nome || ''} — ${r.interesse || ''}`.trim(),
+        dados: r,
+      });
+      await db.query('DELETE FROM reservas WHERE id=$1', [r.id]);
+    }
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../db');
 const fs = require('fs');
 const path = require('path');
+const lixeira = require('../lib/lixeira');
 
 // ── Auto-migration ─────────────────────────────────────────────────────────
 (async () => {
@@ -16,6 +17,14 @@ const path = require('path');
       criado_em   TIMESTAMP DEFAULT NOW()
     )
   `).catch(e => console.error('[freq] migration freq_aulas:', e.message));
+
+  // Campos adicionais (datas inteligentes + plano de aula + reuso de PDF do banco):
+  //   status     → agendada | realizada | feriado | cancelada
+  //   plano_aula → texto livre "o que aconteceu hoje" (substitui o cartão do Trello)
+  //   aula_id    → FK para o banco de aulas (aulas.id), quando o PDF foi reaproveitado
+  await db.query(`ALTER TABLE freq_aulas ADD COLUMN IF NOT EXISTS status     VARCHAR(20) DEFAULT 'agendada'`).catch(e => console.error('[freq] migration status:', e.message));
+  await db.query(`ALTER TABLE freq_aulas ADD COLUMN IF NOT EXISTS plano_aula TEXT`).catch(e => console.error('[freq] migration plano_aula:', e.message));
+  await db.query(`ALTER TABLE freq_aulas ADD COLUMN IF NOT EXISTS aula_id    INTEGER`).catch(e => console.error('[freq] migration aula_id:', e.message));
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS freq_presencas (
@@ -38,7 +47,8 @@ const path = require('path');
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT t.id, t.nome, t.status, t.data_ini, t.data_fim, t.dia_semana, t.hora_ini, t.hora_fim,
+      `SELECT t.id, t.nome, t.turma, t.status, t.data_ini, t.data_fim, t.dias, t.horario,
+              t.carga, t.group_jid,
               COUNT(DISTINCT a.id)::int  AS total_alunos,
               COUNT(DISTINCT fa.id)::int AS total_aulas
        FROM turmas t
@@ -86,15 +96,16 @@ router.get('/:turma_id', async (req, res, next) => {
 router.post('/:turma_id/aulas', async (req, res, next) => {
   try {
     const tid = parseInt(req.params.turma_id);
-    const { numero, data, titulo, pdf_url } = req.body;
+    const { numero, data, titulo, pdf_url, status, plano_aula, aula_id } = req.body;
 
     const { rows: alunos } = await db.query(
       `SELECT id FROM alunos WHERE turma_id=$1 AND status='ativo'`, [tid]
     );
     const { rows: [aula] } = await db.query(
-      `INSERT INTO freq_aulas (turma_id, numero, data, titulo, pdf_url)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [tid, numero, data, titulo || `Aula ${String(numero).padStart(2,'0')}`, pdf_url||null]
+      `INSERT INTO freq_aulas (turma_id, numero, data, titulo, pdf_url, status, plano_aula, aula_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [tid, numero, data, titulo || `Aula ${String(numero).padStart(2,'0')}`,
+       pdf_url||null, status||'agendada', plano_aula||null, aula_id||null]
     );
     for (const aluno of alunos) {
       await db.query(
@@ -111,14 +122,17 @@ router.post('/:turma_id/aulas', async (req, res, next) => {
 router.put('/aulas/:aula_id', async (req, res, next) => {
   try {
     const aid = parseInt(req.params.aula_id);
-    const { titulo, pdf_url, data } = req.body;
+    const { titulo, pdf_url, data, status, plano_aula, aula_id } = req.body;
     const { rows: [aula] } = await db.query(
       `UPDATE freq_aulas
-       SET titulo  = COALESCE($1, titulo),
-           pdf_url = COALESCE($2, pdf_url),
-           data    = COALESCE($3::date, data)
-       WHERE id=$4 RETURNING *`,
-      [titulo||null, pdf_url||null, data||null, aid]
+       SET titulo     = COALESCE($1, titulo),
+           pdf_url    = COALESCE($2, pdf_url),
+           data       = COALESCE($3::date, data),
+           status     = COALESCE($4, status),
+           plano_aula = COALESCE($5, plano_aula),
+           aula_id    = COALESCE($6, aula_id)
+       WHERE id=$7 RETURNING *`,
+      [titulo||null, pdf_url||null, data||null, status||null, plano_aula||null, aula_id||null, aid]
     );
     res.json(aula);
   } catch (err) { next(err); }
@@ -127,7 +141,18 @@ router.put('/aulas/:aula_id', async (req, res, next) => {
 // ── DELETE /api/frequencia/aulas/:aula_id ────────────────────────────────────
 router.delete('/aulas/:aula_id', async (req, res, next) => {
   try {
-    await db.query(`DELETE FROM freq_aulas WHERE id=$1`, [parseInt(req.params.aula_id)]);
+    const id = parseInt(req.params.aula_id);
+    const { rows } = await db.query('SELECT * FROM freq_aulas WHERE id=$1', [id]);
+    if (rows.length) {
+      const aula = rows[0];
+      const { rows: pres } = await db.query('SELECT * FROM freq_presencas WHERE aula_id=$1', [id]);
+      await lixeira.guardar({
+        entidade: 'freq_aula', ref_id: id, por: req,
+        rotulo: `Aula ${aula.numero || ''} — ${aula.titulo || ''} (frequência)`.trim(),
+        dados: { _aula: aula, _presencas: pres },
+      });
+    }
+    await db.query(`DELETE FROM freq_aulas WHERE id=$1`, [id]);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

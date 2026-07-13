@@ -1,9 +1,15 @@
 const router = require('express').Router();
 const db = require('../db');
+const lixeira = require('../lib/lixeira');
 
 // Auto-migration: garante que a coluna foto existe na tabela turmas
 db.query("ALTER TABLE turmas ADD COLUMN IF NOT EXISTS foto VARCHAR(500)")
   .catch(err => console.error('[turmas] migration foto:', err.message));
+
+// Auto-migration: JID do grupo de WhatsApp da turma (preenchido ao criar o grupo
+// via Evolution). Sem isso não dá para postar resumo/PDF da aula no grupo depois.
+db.query("ALTER TABLE turmas ADD COLUMN IF NOT EXISTS group_jid VARCHAR(120)")
+  .catch(err => console.error('[turmas] migration group_jid:', err.message));
 
 // GET /api/turmas — listar turmas (com filtro opcional por status)
 router.get('/', async (req, res, next) => {
@@ -147,10 +153,44 @@ router.patch('/:id/vagas', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// DELETE /api/turmas/:id — excluir turma
+// PATCH /api/turmas/:id/group-jid — gravar o JID do grupo de WhatsApp da turma.
+// Chamado pelo painel logo após o Evolution criar o grupo (criarGrupoWhatsApp).
+router.patch('/:id/group-jid', async (req, res, next) => {
+  try {
+    const { group_jid } = req.body;
+    const { rows } = await db.query(
+      'UPDATE turmas SET group_jid=$1 WHERE id=$2 RETURNING *',
+      [group_jid || null, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Turma nao encontrada' });
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/turmas/:id — manda a turma (e os alunos dentro dela) pra Lixeira
 router.delete('/:id', async (req, res, next) => {
   try {
-    await db.query('DELETE FROM turmas WHERE id = $1', [req.params.id]);
+    const id = parseInt(req.params.id);
+    const { rows: t } = await db.query('SELECT * FROM turmas WHERE id=$1', [id]);
+    if (!t.length) return res.json({ ok: true });
+    const turma = t[0];
+    const { rows: alunos } = await db.query('SELECT * FROM alunos WHERE turma_id=$1', [id]);
+    // frequência da turma (apagada em cascata no banco) — fotografada p/ restauro completo
+    const { rows: freqAulas } = await db.query('SELECT * FROM freq_aulas WHERE turma_id=$1', [id]);
+    const { rows: freqPres } = freqAulas.length
+      ? await db.query('SELECT * FROM freq_presencas WHERE aula_id = ANY($1)', [freqAulas.map(a => a.id)])
+      : { rows: [] };
+
+    // fotografa turma + alunos + frequência juntos antes de apagar
+    await lixeira.guardar({
+      entidade: 'turma', ref_id: id, por: req,
+      rotulo: `Turma ${turma.codigo || ''} — ${turma.nome || turma.turma || ''}`.trim()
+              + (alunos.length ? ` (${alunos.length} aluno${alunos.length > 1 ? 's' : ''})` : ''),
+      dados: { _turma: turma, _alunos: alunos, _freq_aulas: freqAulas, _freq_presencas: freqPres },
+    });
+
+    await db.query('DELETE FROM alunos WHERE turma_id=$1', [id]);
+    await db.query('DELETE FROM turmas WHERE id=$1', [id]);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

@@ -1,17 +1,25 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-
 const app = express();
 const PORT = process.env.PORT || 4000;
 
 // ── Middlewares ────────────────────────────────────────────
+// Headers de segurança (sem dependência externa)
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  next();
+});
 app.use(cors({
   origin: process.env.CORS_ORIGIN || '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '25mb' }));
 
 // ── Rotas ──────────────────────────────────────────────────
 app.use('/api/turmas',      require('./routes/turmas'));
@@ -25,24 +33,18 @@ app.use('/api/interessados', require('./routes/interessados'));
 app.use('/api/frequencia',  require('./routes/frequencia'));
 app.use('/api/financeiro',  require('./routes/financeiro'));
 app.use('/api/contato',     require('./routes/contato'));
-// Virturia: nunca cachear — dados mudam a cada minuto
-app.use('/api/virturia', (req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  next();
-});
-app.use('/api/virturia',    require('./routes/virturia'));
-app.use('/api/virturia',    require('./routes/virturia-auth'));
-app.use('/api/virturia-b365', (req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  next();
-});
-app.use('/api/virturia-b365', require('./routes/virturia-b365'));
+app.use('/api/ead',         require('./routes/ead'));
+app.use('/api/lixeira',     require('./routes/lixeira'));
+app.use('/api/debounce',    require('./routes/debounce'));
+app.use('/api/leads',       require('./routes/leads'));
+app.use('/api/planos',      require('./routes/planos'));
 app.use('/api',             require('./routes/portfolio'));
 app.use('/api',             require('./routes/clientes-web'));
 
-// ── Webhook InfinitePay + redirect curto ──────────────────
+// ── Webhooks externos ──────────────────────────────────────
 const { webhookInfinitePay, payRedirect } = require('./routes/pagamentos');
 app.post('/webhook/infinitepay', webhookInfinitePay);
+app.use('/webhook/chatwoot', require('./routes/chatwoot-webhook'));
 app.get('/pay/:id', payRedirect);
 
 // ── Health check ───────────────────────────────────────────
@@ -63,7 +65,11 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`✅  F5 API rodando na porta ${PORT}`);
-});
 
-// ── Cron VirtuIA removido — coleta feita pelo cron-job.org a cada 3min ────
-// O cron interno causava excesso de requests (18/min) que bloqueava a Betano
+  // Lixeira: limpa o que passou de 30 dias no boot e a cada 24h.
+  const lixeira = require('./lib/lixeira');
+  lixeira.purgarExpirados().catch(e => console.error('[lixeira] purga inicial:', e.message));
+  setInterval(() => {
+    lixeira.purgarExpirados().catch(e => console.error('[lixeira] purga diária:', e.message));
+  }, 24 * 60 * 60 * 1000);
+});
