@@ -153,6 +153,16 @@ router.get('/resumo', async (req, res) => {
         AND (data_inicio IS NULL OR data_inicio <= (DATE_TRUNC('month', $1::date) + INTERVAL '1 month' - INTERVAL '1 day'))
     `, [refMes + '-01']);
 
+    /* Lista de quem compõe o MRR, pro relatório mostrar de onde vem o
+       dinheiro (mesmo critério de data da query acima) — não só o total. */
+    const { rows: clientesMrr } = await db.query(`
+      SELECT id, nome, plano, mensalidade
+      FROM clientes_web
+      WHERE status='ativo' AND (periodicidade IS NULL OR periodicidade != 'avulso')
+        AND (data_inicio IS NULL OR data_inicio <= (DATE_TRUNC('month', $1::date) + INTERVAL '1 month' - INTERVAL '1 day'))
+      ORDER BY mensalidade DESC
+    `, [refMes + '-01']);
+
     /* Inadimplência: antes só contava quem tinha status='inadimplente' (flag
        manual), ignorando aluno com status_pagamento 'pendente' ou 'parcial'
        (que tem valor_restante). Agora soma o que falta receber de verdade:
@@ -274,6 +284,7 @@ router.get('/resumo', async (req, res) => {
       hist_matriculas:    histMatriculas,
       lancamentos:        lancDetalhes,
       matriculas_mes:     alunosMes,
+      clientes_mrr:       clientesMrr,
       recorrentes,
     });
   } catch (err) { res.status(500).json({ erro: err.message }); }
