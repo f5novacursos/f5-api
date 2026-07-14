@@ -81,6 +81,24 @@ router.post('/recorrentes', async (req, res) => {
   } catch (err) { res.status(500).json({ erro: err.message }); }
 });
 
+/* ── PUT /api/financeiro/recorrentes/:id — edita template ───── */
+router.put('/recorrentes/:id', async (req, res) => {
+  try {
+    const { categoria, descricao, valor, dia_venc } = req.body;
+    const { rows } = await db.query(
+      `UPDATE financeiro_recorrente SET
+        categoria = COALESCE($1, categoria),
+        descricao = COALESCE($2, descricao),
+        valor     = COALESCE($3, valor),
+        dia_venc  = COALESCE($4, dia_venc)
+       WHERE id=$5 AND ativo=true RETURNING *`,
+      [categoria ?? null, descricao ?? null, valor ?? null, dia_venc ?? null, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ erro: 'Não encontrado' });
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ erro: err.message }); }
+});
+
 /* ── DELETE /api/financeiro/recorrentes/:id — remove template ─ */
 router.delete('/recorrentes/:id', async (req, res) => {
   try {
