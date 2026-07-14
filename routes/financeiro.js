@@ -159,15 +159,20 @@ router.get('/resumo', async (req, res) => {
         AND EXTRACT(YEAR FROM pagamento)=$1 AND EXTRACT(MONTH FROM pagamento)=$2
     `, [ano, m]);
 
-    /* MRR: só conta cliente que já tinha contrato iniciado até o fim do mês
-       consultado — evita que cliente novo infle o MRR de meses passados.
-       ⚠️ Limite conhecido: não existe data de cancelamento na tabela, então
-       um cliente que já saiu ainda conta pra MRR de meses em que estava ativo
-       mas também (incorretamente) pra depois, até virar status != 'ativo'. */
+    /* MRR: só conta cliente ATIVO, com contrato já iniciado até o fim do mês
+       consultado, E com status_pgto='pago' (confirmado — o n8n atualiza isso
+       via webhook quando o InfinitePay confirma o pagamento). Antes contava
+       todo cliente ativo, mesmo os com pagamento 'pendente'/'vencido' —
+       mostrava como recebido um dinheiro que não tinha entrado.
+       ⚠️ Limites conhecidos: (1) não existe data de cancelamento na tabela,
+       então cliente que já saiu ainda conta pra MRR de meses em que estava
+       ativo mas também (incorretamente) depois, até status virar != 'ativo';
+       (2) status_pgto é o valor ATUAL do cliente, sem histórico — olhar mês
+       passado usa o status de pagamento de HOJE, não o de quando era aquele mês. */
     const { rows: mrr } = await db.query(`
       SELECT COALESCE(SUM(mensalidade),0) as mrr, COUNT(*) as qt
       FROM clientes_web
-      WHERE status='ativo' AND (periodicidade IS NULL OR periodicidade != 'avulso')
+      WHERE status='ativo' AND status_pgto='pago' AND (periodicidade IS NULL OR periodicidade != 'avulso')
         AND (data_inicio IS NULL OR data_inicio <= (DATE_TRUNC('month', $1::date) + INTERVAL '1 month' - INTERVAL '1 day'))
     `, [refMes + '-01']);
 
@@ -176,7 +181,7 @@ router.get('/resumo', async (req, res) => {
     const { rows: clientesMrr } = await db.query(`
       SELECT id, nome, plano, mensalidade
       FROM clientes_web
-      WHERE status='ativo' AND (periodicidade IS NULL OR periodicidade != 'avulso')
+      WHERE status='ativo' AND status_pgto='pago' AND (periodicidade IS NULL OR periodicidade != 'avulso')
         AND (data_inicio IS NULL OR data_inicio <= (DATE_TRUNC('month', $1::date) + INTERVAL '1 month' - INTERVAL '1 day'))
       ORDER BY mensalidade DESC
     `, [refMes + '-01']);
