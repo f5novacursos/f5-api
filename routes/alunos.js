@@ -81,9 +81,20 @@ router.put('/:id', async (req, res, next) => {
   try {
     const { nome, cpf, data_nasc, email, whatsapp, endereco, curso, turma_id, status, pagamento, valor, cert_hash, status_pagamento, tem_notebook } = req.body;
 
-    // Aceita valor como string "R$ 550,00" ou numero
+    // Aceita valor como string "R$ 550,00", "R$ 1.500,00" ou numero.
+    // Se tem vírgula, ela é o separador decimal (remove pontos de milhar antes).
+    // Sem vírgula mas com mais de um ponto, só o último ponto é decimal.
     const valorNum = valor != null
-      ? parseFloat(String(valor).replace(/[^\d,.]/g,'').replace(',','.')) || null
+      ? (() => {
+          let s = String(valor).replace(/[^\d,.]/g, '').trim();
+          if (!s) return null;
+          if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+          else {
+            const partes = s.split('.');
+            if (partes.length > 2) s = partes.slice(0, -1).join('') + '.' + partes[partes.length - 1];
+          }
+          return parseFloat(s) || null;
+        })()
       : null;
 
     const { rows } = await db.query(

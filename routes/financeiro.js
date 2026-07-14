@@ -141,14 +141,34 @@ router.get('/resumo', async (req, res) => {
         AND EXTRACT(YEAR FROM pagamento)=$1 AND EXTRACT(MONTH FROM pagamento)=$2
     `, [ano, m]);
 
+    /* MRR: só conta cliente que já tinha contrato iniciado até o fim do mês
+       consultado — evita que cliente novo infle o MRR de meses passados.
+       ⚠️ Limite conhecido: não existe data de cancelamento na tabela, então
+       um cliente que já saiu ainda conta pra MRR de meses em que estava ativo
+       mas também (incorretamente) pra depois, até virar status != 'ativo'. */
     const { rows: mrr } = await db.query(`
       SELECT COALESCE(SUM(mensalidade),0) as mrr, COUNT(*) as qt
-      FROM clientes_web WHERE status='ativo' AND (periodicidade IS NULL OR periodicidade != 'avulso')
-    `);
+      FROM clientes_web
+      WHERE status='ativo' AND (periodicidade IS NULL OR periodicidade != 'avulso')
+        AND (data_inicio IS NULL OR data_inicio <= (DATE_TRUNC('month', $1::date) + INTERVAL '1 month' - INTERVAL '1 day'))
+    `, [refMes + '-01']);
 
+    /* Inadimplência: antes só contava quem tinha status='inadimplente' (flag
+       manual), ignorando aluno com status_pagamento 'pendente' ou 'parcial'
+       (que tem valor_restante). Agora soma o que falta receber de verdade:
+       parcial → valor_restante; pendente ou inadimplente → valor cheio. */
     const { rows: inadimp } = await db.query(`
-      SELECT COUNT(*) as qt, COALESCE(SUM(valor),0) as total
-      FROM alunos WHERE status='inadimplente'
+      SELECT COUNT(*) FILTER (WHERE devendo > 0) as qt, COALESCE(SUM(devendo),0) as total
+      FROM (
+        SELECT CASE
+          WHEN status_pagamento = 'parcial' THEN
+            COALESCE(NULLIF(regexp_replace(REPLACE(valor_restante::text, ',', '.'), '[^0-9.]', '', 'g'), '')::numeric, 0)
+          WHEN status_pagamento = 'pendente' OR status = 'inadimplente' THEN
+            COALESCE(valor, 0)
+          ELSE 0
+        END as devendo
+        FROM alunos
+      ) t
     `);
 
     const { rows: historico } = await db.query(`
