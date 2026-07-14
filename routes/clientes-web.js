@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
 const lixeira = require('../lib/lixeira');
+const adminAuth = require('../middleware/adminAuth');
 
 /* Auto-migration — cria tabela e adiciona colunas novas se não existirem */
 db.query(`
@@ -45,7 +46,7 @@ router.get('/clientes-web', async (req, res) => {
 });
 
 /* POST /api/clientes-web */
-router.post('/clientes-web', async (req, res) => {
+router.post('/clientes-web', adminAuth, async (req, res) => {
   try {
     const {
       nome, whatsapp='', dominio='', plano='', periodicidade='mensal',
@@ -80,7 +81,7 @@ router.post('/clientes-web', async (req, res) => {
 });
 
 /* PUT /api/clientes-web/:id */
-router.put('/clientes-web/:id', async (req, res) => {
+router.put('/clientes-web/:id', adminAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const {
@@ -136,7 +137,7 @@ router.put('/clientes-web/:id', async (req, res) => {
 });
 
 /* DELETE /api/clientes-web/:id — manda o cliente web pra Lixeira */
-router.delete('/clientes-web/:id', async (req, res) => {
+router.delete('/clientes-web/:id', adminAuth, async (req, res) => {
   try {
     const { rows } = await db.query('DELETE FROM clientes_web WHERE id = $1 RETURNING *', [Number(req.params.id)]);
     if (!rows.length) return res.status(404).json({ erro: 'Cliente não encontrado.' });

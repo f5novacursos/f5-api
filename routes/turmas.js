@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
 const lixeira = require('../lib/lixeira');
+const adminAuth = require('../middleware/adminAuth');
 
 // Auto-migration: garante que a coluna foto existe na tabela turmas
 db.query("ALTER TABLE turmas ADD COLUMN IF NOT EXISTS foto VARCHAR(500)")
@@ -71,7 +72,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/turmas — criar turma
-router.post('/', async (req, res, next) => {
+router.post('/', adminAuth, async (req, res, next) => {
   try {
     const b = req.body;
     const nullDate = v => (v && String(v).trim() !== '' ? v : null);
@@ -111,7 +112,7 @@ router.post('/', async (req, res, next) => {
 });
 
 // PUT /api/turmas/:id — atualizar turma
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', adminAuth, async (req, res, next) => {
   try {
     const b = req.body;
     const nullDate = v => (v && String(v).trim() !== '' ? v : null);
@@ -142,7 +143,7 @@ router.put('/:id', async (req, res, next) => {
 });
 
 // PATCH /api/turmas/:id/vagas — atualizar vagas ocupadas
-router.patch('/:id/vagas', async (req, res, next) => {
+router.patch('/:id/vagas', adminAuth, async (req, res, next) => {
   try {
     const { vagas_ocupadas } = req.body;
     const { rows } = await db.query(
@@ -155,7 +156,7 @@ router.patch('/:id/vagas', async (req, res, next) => {
 
 // PATCH /api/turmas/:id/group-jid — gravar o JID do grupo de WhatsApp da turma.
 // Chamado pelo painel logo após o Evolution criar o grupo (criarGrupoWhatsApp).
-router.patch('/:id/group-jid', async (req, res, next) => {
+router.patch('/:id/group-jid', adminAuth, async (req, res, next) => {
   try {
     const { group_jid } = req.body;
     const { rows } = await db.query(
@@ -168,7 +169,7 @@ router.patch('/:id/group-jid', async (req, res, next) => {
 });
 
 // DELETE /api/turmas/:id — manda a turma (e os alunos dentro dela) pra Lixeira
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', adminAuth, async (req, res, next) => {
   try {
     const id = parseInt(req.params.id);
     const { rows: t } = await db.query('SELECT * FROM turmas WHERE id=$1', [id]);

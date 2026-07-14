@@ -25,14 +25,14 @@ const adminAuth = require('./middleware/adminAuth');
 
 // ── Rotas ──────────────────────────────────────────────────
 app.use('/api/turmas',      require('./routes/turmas'));
-app.use('/api/alunos',      require('./routes/alunos'));
+app.use('/api/alunos',      adminAuth, require('./routes/alunos'));
 app.use('/api/reservas',    require('./routes/reservas'));
 app.use('/api/cursos',      require('./routes/cursos'));
 app.use('/api/pagamentos',  require('./routes/pagamentos'));
 app.use('/api/certificado', require('./routes/certificados'));
-app.use('/api/aulas',       require('./routes/aulas'));
-app.use('/api/interessados', require('./routes/interessados'));
-app.use('/api/frequencia',  require('./routes/frequencia'));
+app.use('/api/aulas',       adminAuth, require('./routes/aulas'));
+app.use('/api/interessados', adminAuth, require('./routes/interessados'));
+app.use('/api/frequencia',  adminAuth, require('./routes/frequencia'));
 app.use('/api/financeiro',  adminAuth, require('./routes/financeiro'));
 app.use('/api/contato',     require('./routes/contato'));
 app.use('/api/ead',         require('./routes/ead'));

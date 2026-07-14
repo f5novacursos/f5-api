@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db     = require('../db');
 const lixeira = require('../lib/lixeira');
+const adminAuth = require('../middleware/adminAuth');
 
 /* Auto-migration: cria tabela e semeia dados iniciais */
 (async () => {
@@ -47,7 +48,7 @@ router.get('/', async (req, res, next) => {
 });
 
 /* POST /api/cursos */
-router.post('/', async (req, res, next) => {
+router.post('/', adminAuth, async (req, res, next) => {
   try {
     const { nome, carga, preco } = req.body;
     const emoji = req.body.emoji || 'ð';
@@ -62,7 +63,7 @@ router.post('/', async (req, res, next) => {
 });
 
 /* PUT /api/cursos/:id */
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', adminAuth, async (req, res, next) => {
   try {
     const { nome, carga, preco } = req.body;
     const emoji = req.body.emoji || 'ð';
@@ -78,7 +79,7 @@ router.put('/:id', async (req, res, next) => {
 });
 
 /* DELETE /api/cursos/:id — soft delete (ativo=false) + registra na Lixeira */
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', adminAuth, async (req, res, next) => {
   try {
     const { rows } = await db.query(
       'UPDATE cursos SET ativo=false WHERE id=$1 AND ativo=true RETURNING *',

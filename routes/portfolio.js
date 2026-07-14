@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
 const lixeira = require('../lib/lixeira');
+const adminAuth = require('../middleware/adminAuth');
 
 /* ══════════════════════════════════════════════════════════════
    AUTO-MIGRATION — cria tabela clientes_web se não existir
@@ -62,7 +63,7 @@ router.get('/portfolio', async (req, res) => {
            portfolio_descricao, portfolio_tipo,
            exibir_portfolio, exibir_sistemas }
 ══════════════════════════════════════════════════════════════ */
-router.post('/portfolio', async (req, res) => {
+router.post('/portfolio', adminAuth, async (req, res) => {
   try {
     const {
       nome,
@@ -106,7 +107,7 @@ router.post('/portfolio', async (req, res) => {
    PUT /api/portfolio/:id — edita cliente existente
    Body: qualquer subconjunto dos campos acima
 ══════════════════════════════════════════════════════════════ */
-router.put('/portfolio/:id', async (req, res) => {
+router.put('/portfolio/:id', adminAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const {
@@ -153,7 +154,7 @@ router.put('/portfolio/:id', async (req, res) => {
 /* ══════════════════════════════════════════════════════════════
    DELETE /api/portfolio/:id — remove cliente
 ══════════════════════════════════════════════════════════════ */
-router.delete('/portfolio/:id', async (req, res) => {
+router.delete('/portfolio/:id', adminAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { rows } = await db.query('DELETE FROM clientes_web WHERE id = $1 RETURNING *', [id]);

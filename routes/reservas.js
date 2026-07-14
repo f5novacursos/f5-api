@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../db');
 const https = require('https');
 const lixeira = require('../lib/lixeira');
+const adminAuth = require('../middleware/adminAuth');
 
 function notificarN8n(payload) {
   try {
@@ -32,7 +33,7 @@ router.get('/contagem', async (req, res, next) => {
 });
 
 // GET /api/reservas — listar reservas
-router.get('/', async (req, res, next) => {
+router.get('/', adminAuth, async (req, res, next) => {
   try {
     const { busca, interesse } = req.query;
     let query = 'SELECT * FROM reservas WHERE 1=1';
@@ -52,7 +53,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // GET /api/reservas/:id
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', adminAuth, async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM reservas WHERE id=$1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Reserva nao encontrada' });
@@ -80,7 +81,7 @@ router.post('/', async (req, res, next) => {
 });
 
 // POST /api/reservas/:id/converter — converter reserva em aluno
-router.post('/:id/converter', async (req, res, next) => {
+router.post('/:id/converter', adminAuth, async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
@@ -117,7 +118,7 @@ router.post('/:id/converter', async (req, res, next) => {
 });
 
 // DELETE /api/reservas/:id — manda a reserva pra Lixeira
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', adminAuth, async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM reservas WHERE id=$1', [req.params.id]);
     if (rows.length) {

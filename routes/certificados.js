@@ -8,6 +8,7 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
+const adminAuth = require("../middleware/adminAuth");
 
 // Auto-migration: garante colunas cert_hash e cert_emitido na tabela alunos
 async function migrateCertColumns() {
@@ -118,7 +119,7 @@ router.get("/validar", async (req, res) => {
 });
 
 // ─── POST /api/certificado/emitir ─────────────────────────────────────────
-router.post("/emitir", async (req, res) => {
+router.post("/emitir", adminAuth, async (req, res) => {
   const { aluno_id } = req.body;
   if (!aluno_id) return res.status(400).json({ erro: "aluno_id obrigatório" });
 
@@ -163,7 +164,7 @@ router.post("/emitir", async (req, res) => {
 // ─── POST /api/certificado/avulso ─────────────────────────────────────────
 // Emite certificado avulso para aluno sem turma cadastrada no sistema.
 // Body: { nome, cpf (opcional), curso, conclusao (YYYY-MM-DD), carga (opcional) }
-router.post("/avulso", async (req, res) => {
+router.post("/avulso", adminAuth, async (req, res) => {
   const { nome, cpf, curso, conclusao, carga } = req.body;
   if (!nome || !curso || !conclusao) {
     return res.status(400).json({ erro: "nome, curso e conclusao são obrigatórios" });
