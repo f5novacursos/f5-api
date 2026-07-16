@@ -97,40 +97,51 @@ router.put('/:id', async (req, res, next) => {
         })()
       : null;
 
+    const sets = [
+      'nome             = COALESCE($1,  nome)',
+      'cpf              = COALESCE($2,  cpf)',
+      'data_nasc        = COALESCE($3,  data_nasc)',
+      'email            = COALESCE($4,  email)',
+      'whatsapp         = COALESCE($5,  whatsapp)',
+      'endereco         = COALESCE($6,  endereco)',
+      'curso            = COALESCE($7,  curso)',
+      'turma_id         = COALESCE($8,  turma_id)',
+      'status           = COALESCE($9,  status)',
+      'pagamento        = COALESCE($10, pagamento)',
+      'valor            = COALESCE($11, valor)',
+      "cert_hash        = COALESCE(NULLIF($12,''), cert_hash)",
+      'status_pagamento = COALESCE($13, status_pagamento)',
+      'tem_notebook     = COALESCE($14, tem_notebook)',
+    ];
+    const params = [
+      nome      ?? null,
+      cpf       ?? null,
+      data_nasc ?? null,
+      email     ?? null,
+      whatsapp  ?? null,
+      endereco  ?? null,
+      curso     ?? null,
+      turma_id  ?? null,
+      status    ?? null,
+      pagamento || null,
+      valorNum,
+      cert_hash ?? null,
+      status_pagamento ?? null,
+      tem_notebook != null ? Boolean(tem_notebook) : null,
+    ];
+
+    // valor_restante / prox_pgto / obs: atribuição direta (não COALESCE) — só entram
+    // no UPDATE se a chave veio no corpo, o que permite ao painel LIMPAR esses campos
+    // (ex: quitou a parcela restante) sem afetar chamadas parciais como toggleNotebook,
+    // que só envia { tem_notebook } e não deve apagar o resto.
+    if ('valor_restante' in req.body) { params.push(req.body.valor_restante || null); sets.push(`valor_restante = $${params.length}`); }
+    if ('prox_pgto' in req.body)      { params.push(req.body.prox_pgto || null);      sets.push(`prox_pgto = $${params.length}`); }
+    if ('obs' in req.body)            { params.push(req.body.obs ?? null);            sets.push(`obs = $${params.length}`); }
+
+    params.push(req.params.id);
     const { rows } = await db.query(
-      `UPDATE alunos SET
-        nome             = COALESCE($1,  nome),
-        cpf              = COALESCE($2,  cpf),
-        data_nasc        = COALESCE($3,  data_nasc),
-        email            = COALESCE($4,  email),
-        whatsapp         = COALESCE($5,  whatsapp),
-        endereco         = COALESCE($6,  endereco),
-        curso            = COALESCE($7,  curso),
-        turma_id         = COALESCE($8,  turma_id),
-        status           = COALESCE($9,  status),
-        pagamento        = COALESCE($10, pagamento),
-        valor            = COALESCE($11, valor),
-        cert_hash        = COALESCE(NULLIF($12,''), cert_hash),
-        status_pagamento = COALESCE($13, status_pagamento),
-        tem_notebook     = COALESCE($14, tem_notebook)
-      WHERE id = $15 RETURNING *`,
-      [
-        nome      ?? null,
-        cpf       ?? null,
-        data_nasc ?? null,
-        email     ?? null,
-        whatsapp  ?? null,
-        endereco  ?? null,
-        curso     ?? null,
-        turma_id  ?? null,
-        status    ?? null,
-        pagamento || null,
-        valorNum,
-        cert_hash ?? null,
-        status_pagamento ?? null,
-        tem_notebook != null ? Boolean(tem_notebook) : null,
-        req.params.id,
-      ]
+      `UPDATE alunos SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      params
     );
     if (!rows.length) return res.status(404).json({ error: 'Aluno nao encontrado' });
     res.json(rows[0]);
