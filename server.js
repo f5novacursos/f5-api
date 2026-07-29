@@ -43,6 +43,7 @@ app.use('/api/planos',      require('./routes/planos'));
 app.use('/api/site-config', require('./routes/site-config'));
 app.use('/api/site-menu',   require('./routes/site-menu'));
 app.use('/api/site-paginas', require('./routes/site-paginas'));
+app.use('/api/whatsapp',    adminAuth, require('./routes/whatsapp'));
 app.use('/api',             require('./routes/portfolio'));
 app.use('/api',             require('./routes/clientes-web'));
 
