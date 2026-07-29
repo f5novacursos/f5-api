@@ -3,6 +3,7 @@ const db = require('../db');
 const fs = require('fs');
 const path = require('path');
 const lixeira = require('../lib/lixeira');
+const evolution = require('../lib/evolution');
 
 // ── Auto-migration ─────────────────────────────────────────────────────────
 (async () => {
@@ -195,6 +196,17 @@ router.get('/pdf/:filename', (req, res) => {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
   fs.createReadStream(filePath).pipe(res);
+});
+
+// ── POST /api/frequencia/aulas/:aula_id/enviar-grupo — resumo (+ PDF) no grupo da turma ──
+router.post('/aulas/:aula_id/enviar-grupo', async (req, res, next) => {
+  try {
+    const { jid, texto, pdfUrl, fileName, caption } = req.body;
+    if (!jid) return res.status(400).json({ error: 'Turma sem grupo vinculado.' });
+    if (texto) await evolution.enviarTexto(jid, texto);
+    if (pdfUrl) await evolution.enviarMidia(jid, { media: pdfUrl, fileName, caption, mediatype: 'document' });
+    res.json({ ok: true });
+  } catch (err) { res.status(502).json({ error: err.message }); }
 });
 
 // ── GET /api/frequencia/:turma_id/relatorio ──────────────────────────────────

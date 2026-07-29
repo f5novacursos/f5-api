@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../db');
 const lixeira = require('../lib/lixeira');
 const adminAuth = require('../middleware/adminAuth');
+const evolution = require('../lib/evolution');
 
 // Auto-migration: garante que a coluna foto existe na tabela turmas
 db.query("ALTER TABLE turmas ADD COLUMN IF NOT EXISTS foto VARCHAR(500)")
@@ -166,6 +167,41 @@ router.patch('/:id/group-jid', adminAuth, async (req, res, next) => {
     if (!rows.length) return res.status(404).json({ error: 'Turma nao encontrada' });
     res.json(rows[0]);
   } catch (err) { next(err); }
+});
+
+// GET /api/turmas/grupos-whatsapp/listar — grupos existentes na conta conectada
+// (usado pra "vincular grupo já criado" quando o grupo nasceu fora do painel).
+router.get('/grupos-whatsapp/listar', adminAuth, async (req, res, next) => {
+  try {
+    const grupos = await evolution.listarGrupos();
+    res.json(grupos);
+  } catch (err) { res.status(502).json({ error: err.message }); }
+});
+
+// POST /api/turmas/:id/grupo-whatsapp — cria o grupo no WhatsApp com os participantes
+// informados e já grava o JID retornado na turma.
+router.post('/:id/grupo-whatsapp', adminAuth, async (req, res, next) => {
+  try {
+    const { nome, descricao, participantes } = req.body;
+    if (!Array.isArray(participantes) || !participantes.length) {
+      return res.status(400).json({ error: 'Nenhum participante informado.' });
+    }
+    const { jid, resposta } = await evolution.criarGrupo({ nome, descricao, participantes });
+    if (!jid) return res.status(502).json({ error: 'Evolution não retornou o JID do grupo.', resposta });
+    await db.query('UPDATE turmas SET group_jid=$1 WHERE id=$2', [jid, req.params.id]);
+    res.json({ jid });
+  } catch (err) { res.status(502).json({ error: err.message }); }
+});
+
+// GET /api/turmas/:id/grupo-whatsapp/convite — link de convite do grupo já vinculado à turma
+router.get('/:id/grupo-whatsapp/convite', adminAuth, async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT group_jid FROM turmas WHERE id=$1', [req.params.id]);
+    if (!rows.length || !rows[0].group_jid) return res.status(404).json({ error: 'Turma sem grupo vinculado.' });
+    const url = await evolution.obterConviteGrupo(rows[0].group_jid);
+    if (!url) return res.status(502).json({ error: 'Não consegui obter o link de convite.' });
+    res.json({ url });
+  } catch (err) { res.status(502).json({ error: err.message }); }
 });
 
 // DELETE /api/turmas/:id — manda a turma (e os alunos dentro dela) pra Lixeira
