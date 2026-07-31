@@ -1,6 +1,38 @@
 const router    = require('express').Router();
 const db        = require('../db');
 const nodemailer = require('nodemailer');
+const { MercadoPagoConfig, Preference } = require('mercadopago');
+
+function _mpPreference() {
+  const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
+  if (!token) throw new Error('MERCADOPAGO_ACCESS_TOKEN não configurado');
+  return new Preference(new MercadoPagoConfig({ accessToken: token }));
+}
+
+/* POST /api/pagamentos/link-ana — gera link MP Checkout Pro R$100 para a Ana enviar */
+router.post('/link-ana', async (req, res, next) => {
+  try {
+    const { descricao, nome, email } = req.body;
+    const desc = descricao || 'Matrícula — F5 Nova Cursos';
+
+    const response = await _mpPreference().create({ body: {
+      items: [{ title: desc, quantity: 1, unit_price: 100.00, currency_id: 'BRL' }],
+      ...(nome || email ? { payer: { ...(nome && { name: nome }), ...(email && { email }) } } : {}),
+      payment_methods: { installments: 1 },
+      back_urls: {
+        success: 'https://f5novacursos.com.br/reserva.html?pago=1',
+        failure: 'https://f5novacursos.com.br/reserva.html',
+        pending: 'https://f5novacursos.com.br/reserva.html?pendente=1'
+      },
+      auto_return: 'approved'
+    }});
+
+    const url = response.init_point;
+    if (!url) return res.status(502).json({ error: 'MP não retornou URL' });
+    console.log(`[link-ana] ${desc} → ${url}`);
+    res.json({ url });
+  } catch (e) { next(e); }
+});
 
 function _mailTransporter() {
   if (!process.env.GMAIL_USER || !process.env.GMAIL_PASS) return null;
