@@ -75,47 +75,6 @@ router.post('/link', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-/* POST /api/pagamentos/link-ana — gera link R$100 para a Ana mandar no WhatsApp */
-router.post('/link-ana', async (req, res, next) => {
-  try {
-    const { descricao, nome, telefone } = req.body;
-    const order_nsu = `ana-${Date.now()}`;
-    const desc = descricao || 'Matrícula — F5 Nova Cursos';
-
-    const payload = {
-      handle: HANDLE,
-      order_nsu,
-      items: [{ quantity: 1, price: 10000, description: desc }], // R$ 100,00
-      redirect_url: 'https://f5novacursos.com.br/reserva.html?pago=1',
-      webhook_url: `${BASE_URL}/webhook/infinitepay`,
-      ...(nome || telefone ? {
-        customer: {
-          ...(nome     && { name:         nome }),
-          ...(telefone && { phone_number: '+55' + String(telefone).replace(/\D/g, '') }),
-        }
-      } : {})
-    };
-
-    const ipRes = await fetch(IP_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!ipRes.ok) {
-      const err = await ipRes.text();
-      return res.status(502).json({ error: 'InfinitePay erro', detail: err });
-    }
-
-    const data = await ipRes.json();
-    const url = data.url || data.checkout_url || data.link;
-    if (!url) return res.status(502).json({ error: 'URL não retornada', data });
-
-    console.log(`[link-ana] ${desc} → ${url}`);
-    res.json({ url, order_nsu });
-  } catch (err) { next(err); }
-});
-
 /* POST /api/pagamentos/matricula */
 router.post('/matricula', async (req, res, next) => {
   const client = await db.connect();
