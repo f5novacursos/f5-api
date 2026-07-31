@@ -1,21 +1,17 @@
 const router    = require('express').Router();
 const db        = require('../db');
 const nodemailer = require('nodemailer');
-const { MercadoPagoConfig, Preference } = require('mercadopago');
 
-function _mpPreference() {
-  const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
-  if (!token) throw new Error('MERCADOPAGO_ACCESS_TOKEN não configurado');
-  return new Preference(new MercadoPagoConfig({ accessToken: token }));
-}
-
-/* POST /api/pagamentos/link-ana — gera link MP Checkout Pro R$100 para a Ana enviar */
+/* POST /api/pagamentos/link-ana — gera link Mercado Pago Checkout Pro R$100 para a Ana enviar */
 router.post('/link-ana', async (req, res, next) => {
   try {
+    const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
+    if (!token) return res.status(500).json({ error: 'MERCADOPAGO_ACCESS_TOKEN não configurado' });
+
     const { descricao, nome, email } = req.body;
     const desc = descricao || 'Matrícula — F5 Nova Cursos';
 
-    const response = await _mpPreference().create({ body: {
+    const body = {
       items: [{ title: desc, quantity: 1, unit_price: 100.00, currency_id: 'BRL' }],
       ...(nome || email ? { payer: { ...(nome && { name: nome }), ...(email && { email }) } } : {}),
       payment_methods: { installments: 1 },
@@ -25,10 +21,17 @@ router.post('/link-ana', async (req, res, next) => {
         pending: 'https://f5novacursos.com.br/reserva.html?pendente=1'
       },
       auto_return: 'approved'
-    }});
+    };
 
-    const url = response.init_point;
-    if (!url) return res.status(502).json({ error: 'MP não retornou URL' });
+    const mpRes = await fetch('https://api.mercadopago.com/checkout/preferences', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(body)
+    });
+
+    const data = await mpRes.json();
+    const url = data.init_point;
+    if (!url) return res.status(502).json({ error: 'MP não retornou URL', detail: data });
     console.log(`[link-ana] ${desc} → ${url}`);
     res.json({ url });
   } catch (e) { next(e); }
