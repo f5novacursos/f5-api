@@ -144,12 +144,17 @@ router.get('/resumo', async (req, res) => {
     const refMes = mes || new Date().toISOString().slice(0, 7);
     const [ano, m] = refMes.split('-');
 
+    /* status incluso no agrupamento — "pago" é dinheiro que já entrou/saiu de
+       verdade; "pendente" é receita a receber / despesa a pagar (futura).
+       Antes essa query somava os dois juntos, então um serviço avulso ainda
+       não recebido ou uma despesa ainda não paga já contava como se tivesse
+       acontecido. */
     const { rows: lancMes } = await db.query(`
-      SELECT tipo, categoria, SUM(valor) as total, COUNT(*) as qt
+      SELECT tipo, categoria, status, SUM(valor) as total, COUNT(*) as qt
       FROM financeiro
       WHERE EXTRACT(YEAR FROM data)=$1 AND EXTRACT(MONTH FROM data)=$2
         AND (recorrente IS NULL OR recorrente = false)
-      GROUP BY tipo, categoria
+      GROUP BY tipo, categoria, status
     `, [ano, m]);
 
     const { rows: matriculas } = await db.query(`
@@ -208,8 +213,8 @@ router.get('/resumo', async (req, res) => {
       SELECT TO_CHAR(data,'Mon') as mes,
              EXTRACT(YEAR FROM data) as ano,
              EXTRACT(MONTH FROM data) as mes_num,
-             SUM(CASE WHEN tipo='receita' THEN valor ELSE 0 END) as rec,
-             SUM(CASE WHEN tipo='despesa' THEN valor ELSE 0 END) as dep
+             SUM(CASE WHEN tipo='receita' AND status='pago' THEN valor ELSE 0 END) as rec,
+             SUM(CASE WHEN tipo='despesa' AND status='pago' THEN valor ELSE 0 END) as dep
       FROM financeiro
       WHERE data >= (DATE_TRUNC('month',CURRENT_DATE) - INTERVAL '5 months')
         AND (recorrente IS NULL OR recorrente = false)
@@ -248,7 +253,7 @@ router.get('/resumo', async (req, res) => {
     const { rows: totaisAno } = await db.query(`
       SELECT tipo, COALESCE(SUM(valor),0) as total
       FROM financeiro
-      WHERE EXTRACT(YEAR FROM data)=$1
+      WHERE EXTRACT(YEAR FROM data)=$1 AND status='pago'
         AND (recorrente IS NULL OR recorrente = false)
       GROUP BY tipo
     `, [ano]);
@@ -275,8 +280,10 @@ router.get('/resumo', async (req, res) => {
       pago_mes: descPagos.has(r.descricao),
     }));
 
-    const receitaAvulsa    = lancMes.filter(l=>l.tipo==='receita').reduce((s,l)=>s+parseFloat(l.total),0);
-    const despesaTotal     = lancMes.filter(l=>l.tipo==='despesa').reduce((s,l)=>s+parseFloat(l.total),0);
+    const receitaAvulsa    = lancMes.filter(l=>l.tipo==='receita' && l.status==='pago').reduce((s,l)=>s+parseFloat(l.total),0);
+    const receitaAvulsaPendente = lancMes.filter(l=>l.tipo==='receita' && l.status==='pendente').reduce((s,l)=>s+parseFloat(l.total),0);
+    const despesaTotal     = lancMes.filter(l=>l.tipo==='despesa' && l.status==='pago').reduce((s,l)=>s+parseFloat(l.total),0);
+    const despesaPendente  = lancMes.filter(l=>l.tipo==='despesa' && l.status==='pendente').reduce((s,l)=>s+parseFloat(l.total),0);
     const receitaMatriculas = parseFloat(matriculas[0]?.total||0);
     const mrrWeb           = parseFloat(mrr[0]?.mrr||0);
     const receitaTotal     = receitaMatriculas + receitaAvulsa + mrrWeb;
@@ -290,9 +297,11 @@ router.get('/resumo', async (req, res) => {
       mes: refMes,
       receita_matriculas: receitaMatriculas,
       receita_avulsa:     receitaAvulsa,
+      receita_avulsa_pendente: receitaAvulsaPendente,
       receita_web_mrr:    mrrWeb,
       receita_total:      receitaTotal,
       despesa_total:      despesaTotal,
+      despesa_pendente:   despesaPendente,
       saldo,
       margem: receitaTotal ? Math.round((saldo/receitaTotal)*100) : 0,
       qt_matriculas:      parseInt(matriculas[0]?.qt||0),

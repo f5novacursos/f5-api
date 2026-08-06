@@ -287,6 +287,8 @@ async function webhookInfinitePay(req, res) {
       `UPDATE alunos SET
          status          = 'ativo',
          pagamento       = CURRENT_DATE,
+         status_pagamento= 'pago',
+         valor_restante  = NULL,
          forma_pgto      = $1,
          transaction_nsu = $2,
          receipt_url     = $3

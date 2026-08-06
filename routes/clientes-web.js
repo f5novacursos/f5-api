@@ -18,7 +18,7 @@ db.query(`
     data_inicio           DATE,
     data_primeira_cobranca DATE,
     proximo_vencimento    DATE,
-    status_pgto           VARCHAR(20)  DEFAULT 'pago',
+    status_pgto           VARCHAR(20)  DEFAULT 'pendente',
     status                VARCHAR(20)  DEFAULT 'ativo',
     obs                   TEXT         DEFAULT '',
     exibir_portfolio      BOOLEAN      DEFAULT false,
@@ -34,6 +34,12 @@ db.query(`
 /* Adiciona coluna vencimento_dominio se não existir (migração incremental) */
 db.query(`ALTER TABLE clientes_web ADD COLUMN IF NOT EXISTS vencimento_dominio DATE`)
   .catch(err => console.error('[clientes-web] migration vencimento_dominio:', err.message));
+
+/* Cliente novo nasce como 'pendente' até confirmar o primeiro pagamento —
+   antes o padrão era 'pago', então todo cadastro novo já entrava contando
+   como MRR recebido no relatório financeiro, mesmo sem ter pago nada ainda. */
+db.query(`ALTER TABLE clientes_web ALTER COLUMN status_pgto SET DEFAULT 'pendente'`)
+  .catch(err => console.error('[clientes-web] migration default status_pgto:', err.message));
 
 /* GET /api/clientes-web */
 router.get('/clientes-web', async (req, res) => {
@@ -51,7 +57,7 @@ router.post('/clientes-web', adminAuth, async (req, res) => {
     const {
       nome, whatsapp='', dominio='', plano='', periodicidade='mensal',
       setup_valor=0, mensalidade=0, data_inicio=null, data_primeira_cobranca=null,
-      proximo_vencimento=null, status_pgto='pago', status='ativo', obs='',
+      proximo_vencimento=null, status_pgto='pendente', status='ativo', obs='',
       exibir_portfolio=false, exibir_sistemas=false,
       portfolio_foto='', portfolio_link='', portfolio_tipo='', portfolio_descricao='',
       vencimento_dominio=null,
