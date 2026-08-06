@@ -155,7 +155,7 @@ router.get('/resumo', async (req, res) => {
     const { rows: matriculas } = await db.query(`
       SELECT COUNT(*) as qt, COALESCE(SUM(valor),0) as total
       FROM alunos
-      WHERE valor IS NOT NULL AND valor>0
+      WHERE valor IS NOT NULL AND valor>0 AND status_pagamento='pago'
         AND EXTRACT(YEAR FROM pagamento)=$1 AND EXTRACT(MONTH FROM pagamento)=$2
     `, [ano, m]);
 
@@ -223,7 +223,7 @@ router.get('/resumo', async (req, res) => {
              EXTRACT(MONTH FROM pagamento) as mes_num,
              COALESCE(SUM(valor),0) as rec
       FROM alunos
-      WHERE valor IS NOT NULL AND valor>0
+      WHERE valor IS NOT NULL AND valor>0 AND status_pagamento='pago'
         AND pagamento >= (DATE_TRUNC('month',CURRENT_DATE) - INTERVAL '5 months')
       GROUP BY TO_CHAR(pagamento,'Mon'), EXTRACT(YEAR FROM pagamento), EXTRACT(MONTH FROM pagamento)
       ORDER BY ano, mes_num
@@ -240,7 +240,7 @@ router.get('/resumo', async (req, res) => {
     const { rows: alunosMes } = await db.query(`
       SELECT id, nome, curso, valor, pagamento, forma_pgto
       FROM alunos
-      WHERE valor IS NOT NULL AND valor>0
+      WHERE valor IS NOT NULL AND valor>0 AND status_pagamento='pago'
         AND EXTRACT(YEAR FROM pagamento)=$1 AND EXTRACT(MONTH FROM pagamento)=$2
       ORDER BY pagamento DESC
     `, [ano, m]);
@@ -256,7 +256,7 @@ router.get('/resumo', async (req, res) => {
     const { rows: totalMatriculasAno } = await db.query(`
       SELECT COALESCE(SUM(valor),0) as total
       FROM alunos
-      WHERE valor IS NOT NULL AND valor>0 AND EXTRACT(YEAR FROM pagamento)=$1
+      WHERE valor IS NOT NULL AND valor>0 AND status_pagamento='pago' AND EXTRACT(YEAR FROM pagamento)=$1
     `, [ano]);
 
     /* Recorrentes: lista todos + marca quais já foram pagos este mês */
