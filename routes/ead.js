@@ -183,6 +183,11 @@ async function initEadDatabase() {
   await db.query(`ALTER TABLE ead_aulas ADD COLUMN IF NOT EXISTS material_url TEXT`);
   await db.query(`ALTER TABLE ead_modulos ADD COLUMN IF NOT EXISTS descricao TEXT`);
   await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS deletado_em TIMESTAMP`);
+  // venda_publica: chave por curso — DEFAULT false pra tudo que já existe (ninguém
+  // vende pro público até o admin ligar curso por curso, conforme for terminando
+  // a gravação). Aluno presencial elegível continua tendo acesso independente disso
+  // (a matrícula dele é criada direto no login, nunca passa pelo checkout).
+  await db.query(`ALTER TABLE ead_cursos ADD COLUMN IF NOT EXISTS venda_publica BOOLEAN DEFAULT false`);
 
   // Popular cursos iniciais se vazia
   const { rows } = await db.query('SELECT COUNT(*) FROM ead_cursos');
@@ -510,13 +515,13 @@ router.get('/cursos', async (req, res, next) => {
 // POST /api/ead/cursos (Admin)
 router.post('/cursos', eadAdminMiddleware, async (req, res, next) => {
   try {
-    const { titulo, descricao, categoria, carga_horaria, preco, icone, imagem } = req.body;
+    const { titulo, descricao, categoria, carga_horaria, preco, icone, imagem, venda_publica } = req.body;
     if (!titulo) return res.status(400).json({ error: 'Título do curso é obrigatório.' });
 
     const { rows } = await db.query(
-      `INSERT INTO ead_cursos (titulo, descricao, categoria, carga_horaria, preco, icone, imagem)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [titulo, descricao || '', categoria || 'Informática', parseInt(carga_horaria) || 20, parseFloat(preco) || 0.00, icone || '💻', imagem || null]
+      `INSERT INTO ead_cursos (titulo, descricao, categoria, carga_horaria, preco, icone, imagem, venda_publica)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [titulo, descricao || '', categoria || 'Informática', parseInt(carga_horaria) || 20, parseFloat(preco) || 0.00, icone || '💻', imagem || null, Boolean(venda_publica)]
     );
     res.status(201).json(rows[0]);
   } catch(e) { next(e); }
@@ -525,7 +530,9 @@ router.post('/cursos', eadAdminMiddleware, async (req, res, next) => {
 // PUT /api/ead/cursos/:id (Admin)
 router.put('/cursos/:id', eadAdminMiddleware, async (req, res, next) => {
   try {
-    const { titulo, descricao, categoria, carga_horaria, preco, icone, imagem } = req.body;
+    const b = req.body || {};
+    const has = k => Object.prototype.hasOwnProperty.call(b, k);
+    const { titulo, descricao, categoria, carga_horaria, preco, icone, imagem } = b;
     const { rows } = await db.query(
       `UPDATE ead_cursos SET
          titulo = COALESCE($1, titulo),
@@ -534,9 +541,10 @@ router.put('/cursos/:id', eadAdminMiddleware, async (req, res, next) => {
          carga_horaria = COALESCE($4, carga_horaria),
          preco = COALESCE($5, preco),
          icone = COALESCE($6, icone),
-         imagem = COALESCE($7, imagem)
+         imagem = COALESCE($7, imagem),
+         venda_publica = CASE WHEN $9::boolean THEN $10::boolean ELSE venda_publica END
        WHERE id = $8 RETURNING *`,
-      [titulo, descricao, categoria, carga_horaria, preco, icone, imagem, req.params.id]
+      [titulo, descricao, categoria, carga_horaria, preco, icone, imagem, req.params.id, has('venda_publica'), Boolean(b.venda_publica)]
     );
     if (!rows.length) return res.status(404).json({ error: 'Curso não encontrado.' });
     res.json(rows[0]);
@@ -1089,6 +1097,15 @@ router.post('/checkout', eadAuthMiddleware, async (req, res, next) => {
     const curso = cursos[0];
 
     const isPresencial = req.user.tipo === 'presencial';
+
+    // Curso ainda não liberado pro público (venda_publica=false) — só aluno
+    // presencial (via CPF) ou admin conseguem comprar/liberar. Aluno presencial
+    // elegível pela turma nem passa por aqui (matrícula já sai pronta no login);
+    // isso cobre o caso de ele querer um curso EAD adicional antes do lançamento.
+    if (!curso.venda_publica && !isPresencial && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Este curso ainda não está disponível para compra pública.' });
+    }
+
     const colId = isPresencial ? 'aluno_id' : 'usuario_id';
 
     // Buscar dados completos do usuário (email e telefone não estão no JWT)
@@ -1196,6 +1213,13 @@ router.post('/checkout-publico', async (req, res, next) => {
     const { rows: cursos } = await client.query('SELECT * FROM ead_cursos WHERE id = $1', [curso_id]);
     if (!cursos.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Curso não encontrado.' }); }
     const curso = cursos[0];
+
+    // checkout-publico é sempre visitante anônimo (sem login) — se o curso ainda
+    // não está liberado pro público, não tem exceção possível aqui.
+    if (!curso.venda_publica) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Este curso ainda não está disponível para compra pública.' });
+    }
 
     // Achar conta existente (por e-mail ou CPF) ou criar uma nova
     const { rows: existentes } = await client.query(
