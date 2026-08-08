@@ -67,8 +67,14 @@ router.get('/:turma_id', async (req, res, next) => {
   try {
     const tid = parseInt(req.params.turma_id);
 
+    // Turma encerrada = somente leitura → mostra todo mundo que passou por ela
+    // (o aluno já foi auto-promovido ativo→formado quando a turma fechou, então
+    // filtrar por status='ativo' aqui apagaria o histórico de presença).
     const { rows: alunos } = await db.query(
-      `SELECT id, nome, cpf FROM alunos WHERE turma_id=$1 AND status='ativo' ORDER BY nome`,
+      `SELECT a.id, a.nome, a.cpf FROM alunos a
+       JOIN turmas t ON t.id = a.turma_id
+       WHERE a.turma_id=$1 AND (t.status='encerrada' OR a.status='ativo')
+       ORDER BY a.nome`,
       [tid]
     );
     const { rows: aulas } = await db.query(
