@@ -10,6 +10,24 @@ const router = express.Router();
 const pool = require("../db");
 const adminAuth = require("../middleware/adminAuth");
 
+// Rate limit simples em memória (mesmo padrão do routes/ead.js) — a busca por
+// CPF devolve nome completo + cursos concluídos sem senha nenhuma (autoatendimento
+// do aluno, por design). Isso limita varredura em massa de CPFs (ex: lista
+// vazada) tentando descobrir quais pertencem a alunos da escola.
+const _rlStore = new Map();
+function _cpfRateLimiter(req, res, next) {
+  const ip = req.ip || req.connection.remoteAddress || 'unknown';
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000, max = 20;
+  let entry = _rlStore.get(ip);
+  if (!entry || now - entry.start > windowMs) { entry = { start: now, count: 0 }; _rlStore.set(ip, entry); }
+  entry.count++;
+  if (entry.count > max) {
+    return res.status(429).json({ erro: "Muitas consultas. Aguarde alguns minutos e tente novamente." });
+  }
+  next();
+}
+
 // Auto-migration: garante colunas cert_hash e cert_emitido na tabela alunos
 async function migrateCertColumns() {
   try {
@@ -28,7 +46,7 @@ migrateCertColumns();
 
 // ─── GET /api/certificado?cpf=XXX ─────────────────────────────────────────
 // Retorna o(s) certificado(s) do aluno pelo CPF (status = formado e cert_hash não nulo)
-router.get("/", async (req, res) => {
+router.get("/", _cpfRateLimiter, async (req, res) => {
   const cpf = (req.query.cpf || "").replace(/\D/g, "");
   if (cpf.length < 11) return res.status(400).json({ erro: "CPF inválido" });
 
