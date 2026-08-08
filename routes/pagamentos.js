@@ -178,12 +178,42 @@ router.post('/matricula', async (req, res, next) => {
   }
 });
 
+// A InfinitePay NÃO assina o webhook (sem HMAC, sem header secreto, sem IP
+// allowlist — confirmado na documentação oficial deles). Isso significa que
+// POST /webhook/infinitepay, sendo público, aceitaria de qualquer um um
+// order_nsu "real" (devolvido na resposta de /api/ead/checkout-publico ou
+// /api/pagamentos/matricula, ambas públicas) e liberaria curso/matrícula sem
+// pagamento nenhum. Por isso, antes de mexer no banco, sempre confirmamos o
+// pagamento de verdade com a própria InfinitePay via POST /payment_check —
+// nunca confiamos só no que chega no corpo do webhook.
+async function _confirmarPagamentoInfinitePay({ order_nsu, transaction_nsu, invoice_slug }) {
+  try {
+    const r = await fetch('https://api.checkout.infinitepay.io/payment_check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle: HANDLE, order_nsu, transaction_nsu, slug: invoice_slug }),
+    });
+    if (!r.ok) { console.warn('[payment_check] HTTP', r.status); return false; }
+    const d = await r.json();
+    return !!(d && d.success && d.paid);
+  } catch (e) {
+    console.error('[payment_check] erro:', e.message);
+    return false;
+  }
+}
+
 async function webhookInfinitePay(req, res) {
   try {
-    const { order_nsu, capture_method, transaction_nsu, receipt_url } = req.body;
+    const { order_nsu, capture_method, transaction_nsu, receipt_url, invoice_slug } = req.body;
     console.log('[InfinitePay Webhook]', JSON.stringify(req.body));
 
     if (!order_nsu) return res.status(400).json({ error: 'order_nsu ausente' });
+
+    const pagamentoConfirmado = await _confirmarPagamentoInfinitePay({ order_nsu, transaction_nsu, invoice_slug });
+    if (!pagamentoConfirmado) {
+      console.warn('[Webhook] payment_check não confirmou pagamento para order_nsu:', order_nsu);
+      return res.status(200).json({ ok: true, ignorado: true });
+    }
 
     // ── FLUXO EAD (order_nsu começa com 'ead-mat-') ──────────────
     if (String(order_nsu).startsWith('ead-mat-')) {
