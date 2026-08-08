@@ -11,10 +11,13 @@ router.get('/', async (req, res, next) => {
   try {
     // Auto-avanca: ativo -> formado APENAS quando turma está encerrada
     // (não avança por data para permitir que admin mova alunos de turma manualmente)
+    // formado_auto_bloqueado=true trava o auto-avanço pra quem teve o certificado
+    // revogado por engano (POST /api/certificado/revogar) — sem isso, essa mesma
+    // query reverteria o status de volta pra 'formado' no próximo carregamento.
     await db.query(
       "UPDATE alunos a SET status = 'formado' FROM turmas t " +
       "WHERE a.turma_id = t.id AND a.status = 'ativo' " +
-      "AND t.status = 'encerrada'"
+      "AND t.status = 'encerrada' AND a.formado_auto_bloqueado IS NOT TRUE"
     );
 
     const { busca, status, turma_id, status_pagamento } = req.query;

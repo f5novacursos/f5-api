@@ -16,7 +16,8 @@ async function migrateCertColumns() {
     await pool.query(`
       ALTER TABLE alunos
         ADD COLUMN IF NOT EXISTS cert_hash     VARCHAR(30)  UNIQUE,
-        ADD COLUMN IF NOT EXISTS cert_emitido  TIMESTAMP
+        ADD COLUMN IF NOT EXISTS cert_emitido  TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS formado_auto_bloqueado BOOLEAN DEFAULT false
     `);
     console.log("[certificados] colunas cert_hash/cert_emitido OK");
   } catch (e) {
@@ -150,13 +151,38 @@ router.post("/emitir", adminAuth, async (req, res) => {
 
     const now = new Date();
     await pool.query(
-      "UPDATE alunos SET cert_hash = $1, cert_emitido = $2 WHERE id = $3",
+      "UPDATE alunos SET cert_hash = $1, cert_emitido = $2, formado_auto_bloqueado = false WHERE id = $3",
       [cert_hash, now, aluno_id]
     );
 
     res.json({ cert_hash, cert_emitido: now });
   } catch (e) {
     console.error("[certificado/emitir]", e.message);
+    res.status(500).json({ erro: "Erro interno" });
+  }
+});
+
+// ─── POST /api/certificado/revogar ────────────────────────────────────────
+// Desfaz uma emissão feita por engano: limpa cert_hash/cert_emitido e volta
+// o aluno pra status 'ativo'. Marca formado_auto_bloqueado=true pra impedir
+// que a auto-promoção ativo→formado (routes/alunos.js, quando a turma já
+// está encerrada) reverta esse status sozinha no próximo GET /api/alunos.
+// A trava só é removida quando o certificado é emitido de novo (rota /emitir).
+router.post("/revogar", adminAuth, async (req, res) => {
+  const { aluno_id } = req.body;
+  if (!aluno_id) return res.status(400).json({ erro: "aluno_id obrigatório" });
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE alunos
+       SET cert_hash = NULL, cert_emitido = NULL, status = 'ativo', formado_auto_bloqueado = true
+       WHERE id = $1 RETURNING id, nome, status`,
+      [aluno_id]
+    );
+    if (rows.length === 0) return res.status(404).json({ erro: "Aluno não encontrado" });
+    res.json({ ok: true, aluno: rows[0] });
+  } catch (e) {
+    console.error("[certificado/revogar]", e.message);
     res.status(500).json({ erro: "Erro interno" });
   }
 });
