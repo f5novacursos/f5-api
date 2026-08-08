@@ -34,6 +34,7 @@ const JWT_EXPIRY = '7d';
 
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const adminAuth = require('../middleware/adminAuth');
 
 const BASE_URL = process.env.BASE_URL || 'https://f5novacursos.com.br';
 
@@ -227,17 +228,7 @@ function eadAdminMiddleware(req, res, next) {
 // POST /api/ead/auth/login
 router.post('/auth/login', loginLimiter, async (req, res, next) => {
   try {
-    const { cpf, email, senha, nasc } = req.body;
-
-    // Login Admin Especial (Compatibilidade)
-    if (cpf === '000.000.000-00' && nasc === '2000-01-01') {
-      const token = jwt.sign(
-        { id: 0, nome: 'Administrador EAD', role: 'admin' },
-        JWT_SECRET,
-        { expiresIn: JWT_EXPIRY }
-      );
-      return res.json({ ok: true, token, usuario: { nome: 'Administrador EAD', role: 'admin' } });
-    }
+    const { cpf, email, senha } = req.body;
 
     // Fluxo Aluno Acadêmico (Presencial) via CPF
     if (cpf && !senha && !email) {
@@ -355,6 +346,20 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
     });
 
   } catch(e) { next(e); }
+});
+
+// POST /api/ead/auth/admin-token — troca a sessão Google do ERP (adminAuth) por
+// um JWT de admin do EAD. Existia antes como bypass público (POST /auth/login
+// com cpf/nascimento fixos, valores que ficavam expostos no admin/js/ead.js do
+// repositório público) — qualquer um conseguia virar admin do EAD sem senha
+// nenhuma. Agora só emite o token pra quem já passou pelo login Google do ERP.
+router.post('/auth/admin-token', adminAuth, async (req, res) => {
+  const token = jwt.sign(
+    { id: 0, nome: 'Administrador EAD', role: 'admin' },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRY }
+  );
+  res.json({ ok: true, token, usuario: { nome: 'Administrador EAD', role: 'admin' } });
 });
 
 // POST /api/ead/auth/cadastro
