@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 4000;
 
 // ── Middlewares ────────────────────────────────────────────
@@ -36,6 +37,7 @@ app.use('/api/frequencia',  adminAuth, require('./routes/frequencia'));
 app.use('/api/financeiro',  adminAuth, require('./routes/financeiro'));
 app.use('/api/contato',     require('./routes/contato'));
 app.use('/api/ead',         require('./routes/ead'));
+app.use('/api/digitacao',   require('./routes/digitacao'));
 app.use('/api/lixeira',     adminAuth, require('./routes/lixeira'));
 app.use('/api/debounce',    require('./routes/debounce'));
 app.use('/api/leads',       require('./routes/leads'));

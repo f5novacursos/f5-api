@@ -110,7 +110,22 @@ router.get("/validar", async (req, res) => {
     `, [codigo]);
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ valido: false });
+      const digitacao = await pool.query(
+        "SELECT c.codigo, c.curso, c.carga_horaria, c.emitido_em, u.nome " +
+        "FROM digitacao_certificados c JOIN digitacao_usuarios u ON u.id = c.usuario_id " +
+        "WHERE UPPER(c.codigo) = UPPER($1) AND c.revogado_em IS NULL AND u.status = 'ativo'",
+        [codigo]
+      );
+      if (digitacao.rows.length === 0) return res.status(404).json({ valido: false });
+      const d = digitacao.rows[0];
+      return res.json({
+        valido: true,
+        aluno: d.nome,
+        curso: d.curso,
+        carga: d.carga_horaria + " horas",
+        conclusao: new Date(d.emitido_em).toLocaleDateString("pt-BR"),
+        codigo: d.codigo
+      });
     }
 
     const r = result.rows[0];
