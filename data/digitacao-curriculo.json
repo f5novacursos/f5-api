@@ -1,5 +1,5 @@
 {
-  "version": "20260825-4",
+  "version": "20260825-5",
   "course": {
     "title": "Curso de Digitação F5",
     "hours": 20,
@@ -18,42 +18,42 @@
       "2": {
         "minimumAccuracy": 90,
         "minimumPpm": 8,
-        "expectedLength": 232,
+        "expectedLength": 219,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "4002a45ccf2bc7c4d3a86279e0b6e8050829ab9b265a242d7cf5a7f1cfa910e9"
+        "contentHash": "8c78a89f715df8420ff1c398eedc826c803abb0e0ee65d7fce170a6b2c67b6bb"
       },
       "3": {
         "minimumAccuracy": 91,
         "minimumPpm": 9,
-        "expectedLength": 234,
+        "expectedLength": 272,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "a9b5bc1e9b0e7aa4ff99ef146a17376d6e9a32b6bdfda91a4335481bd6a39de9"
+        "contentHash": "29aacc3ec4207a4510ad2c45d7b34122c05536196e0397e257760d6ff65e08f7"
       },
       "4": {
         "minimumAccuracy": 91,
         "minimumPpm": 9,
-        "expectedLength": 239,
+        "expectedLength": 296,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "bfd2d31d376c5ac40ff0f3264505b36424e76a67771e8703e492966737985d52"
+        "contentHash": "b647948cbb483b6a49afffd1d6c949ad66dcc60cefec35062271c4d3242c14d6"
       },
       "5": {
         "minimumAccuracy": 92,
         "minimumPpm": 10,
-        "expectedLength": 245,
+        "expectedLength": 272,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "2342a02179cc32be46f17c0b7f3cd535d7cc2a123d14bb2984b88f3a1f42b90b"
+        "contentHash": "194d015841f79a57d394e8b9818592d3caaa6c757648a0ad6a79e88d2b0b54d1"
       },
       "6": {
         "minimumAccuracy": 92,
         "minimumPpm": 12,
-        "expectedLength": 253,
+        "expectedLength": 380,
         "rounds": 4,
         "mode": "sprint",
-        "contentHash": "7f401667097e61fe18d7ac8f340106b4af1d7c1158a2772161af693ef2606acb"
+        "contentHash": "603181a7aed2d1170d912ccd6fc973443c1df0685415efe183e3142cce3334b3"
       },
       "7": {
         "minimumAccuracy": 92,
@@ -66,74 +66,74 @@
       "8": {
         "minimumAccuracy": 93,
         "minimumPpm": 14,
-        "expectedLength": 286,
+        "expectedLength": 308,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "f6f3f63655b1b96c1e1a11734be3f48c1cf692fa022226f6e522835e4b2eb063"
+        "contentHash": "f740331b3cbe6aed44075775b0b161454dad9b0466a150f2cab09a8df7ef43b7"
       },
       "9": {
         "minimumAccuracy": 93,
         "minimumPpm": 15,
-        "expectedLength": 287,
+        "expectedLength": 296,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "db05e3d7dac49de9076e4ec23c9449cf23783afd879b3595c66a0a0dd8c32afa"
+        "contentHash": "30d464b227d59cbd2d27dc290104d754cd70475bd866c13b5b18c9c0ceea0df8"
       },
       "10": {
         "minimumAccuracy": 93,
         "minimumPpm": 15,
-        "expectedLength": 285,
+        "expectedLength": 308,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "a7ff9bc81d32c30eb15f5756e50553d91433aaab67b61c298f8c3774a8cb2f6e"
+        "contentHash": "dce7ea90e7b1a65aa3d49b2bdb5118c471c9dfb1a2bd8ef99b1d6a8f9e2ba438"
       },
       "11": {
         "minimumAccuracy": 94,
         "minimumPpm": 16,
-        "expectedLength": 294,
+        "expectedLength": 316,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "64002a065eed75ec05df1370dda12f562dcaf0d1d9f2330739e368bbabad8d63"
+        "contentHash": "5397d7d05e69664bf3c47187c9d31664f3fb002601955ac4cdfeaa09a01c6eba"
       },
       "12": {
         "minimumAccuracy": 94,
         "minimumPpm": 18,
-        "expectedLength": 305,
+        "expectedLength": 400,
         "rounds": 4,
         "mode": "timeline",
-        "contentHash": "3770638ec707ddb91d354c5c5c1a317d83a53edbd8a301345b4727d6cad19af2"
+        "contentHash": "569cedd3630c9bce4db87b5027b70ddb345db9dfe684c30d2e09279161fd0a5b"
       },
       "13": {
         "minimumAccuracy": 94,
         "minimumPpm": 18,
-        "expectedLength": 338,
+        "expectedLength": 332,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "aad11c67e15cb1f65997c8afc46f27233be90e170468cf13f02e117de68529c5"
+        "contentHash": "938f858d90489a3f0c47dcc1a4f04466d3d890d28cc80a012444803516ffabbf"
       },
       "14": {
         "minimumAccuracy": 94,
         "minimumPpm": 19,
-        "expectedLength": 352,
+        "expectedLength": 364,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "2a944ea1e847d13dcffb19803fb4c07d732ed22b9aac51a8f01570131e299aed"
+        "contentHash": "aa02a8888bbed55b9570e0a9cc0663b5cd4890b36066b509c679e8f7cf4ecdfa"
       },
       "15": {
         "minimumAccuracy": 94,
         "minimumPpm": 20,
-        "expectedLength": 349,
+        "expectedLength": 360,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "abfd35a45ff1f92b7909e0feed1802e27e3cf643848476cdefabcbfc12acec3c"
+        "contentHash": "a3bab531da915d2a2ca7a1e1ef81689056abccab9e7c9f58b0da9f5c9b2c1296"
       },
       "16": {
         "minimumAccuracy": 95,
         "minimumPpm": 20,
-        "expectedLength": 351,
+        "expectedLength": 384,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "fab17be75cfa5ca28cbd1d052373e5ab441d5d637bf1397c6e646ef8ef2cc864"
+        "contentHash": "fd1eb140ff72b5919c2ec454f8d2a2939f537ad034267a3b793f6ecaf03610e8"
       },
       "17": {
         "minimumAccuracy": 95,
@@ -146,26 +146,26 @@
       "18": {
         "minimumAccuracy": 95,
         "minimumPpm": 22,
-        "expectedLength": 336,
+        "expectedLength": 556,
         "rounds": 4,
         "mode": "timeline",
-        "contentHash": "1ceb2d4f61904064d61796462aa15fbedd56a1167aa10e423975e71e45867b4e"
+        "contentHash": "c7bcd6710526d9decd8fd9bc605d38d7a47bf7913132a0cbf4917632ad061753"
       },
       "19": {
         "minimumAccuracy": 95,
         "minimumPpm": 22,
-        "expectedLength": 452,
+        "expectedLength": 840,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "63f07484991d22520dd40dbbb89ffbab5b04104e9042f5974f6d79483d35cbc0"
+        "contentHash": "42dc61d8a6307ba0dc02a114afa9046827d471aa65d97e0feacef96fc079488c"
       },
       "20": {
         "minimumAccuracy": 95,
         "minimumPpm": 23,
-        "expectedLength": 404,
+        "expectedLength": 395,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "2163e127929bb63e85178782ed3f25fe3f31bee04573b9cf195419f43e19fb4d"
+        "contentHash": "7c8b85a4584e4f62e3e55867355eb224b33741fb4ac5bfa98d76a1afe7c7e7cf"
       },
       "21": {
         "minimumAccuracy": 95,
@@ -178,68 +178,68 @@
       "22": {
         "minimumAccuracy": 96,
         "minimumPpm": 24,
-        "expectedLength": 419,
+        "expectedLength": 565,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "51711c7a2faf457cd3ee2f649f82e545b3f557f00ace9ce61860e51d2cdc770a"
+        "contentHash": "7f0ebd80a60f77e9a9a8af3c69c58d19136d067f8d5c7e9ece117919ea0b8a4b"
       },
       "23": {
         "minimumAccuracy": 96,
         "minimumPpm": 26,
-        "expectedLength": 419,
+        "expectedLength": 565,
         "rounds": 4,
         "mode": "message",
-        "contentHash": "31fc8aedc9a34044a3379cccee109f9e04ad6d1cdce81615b783a853c6027b6b"
+        "contentHash": "0f70fdd21fdf0e45ba5633680625e7654f3f9811865b3a4b02c21c3d5aa226af"
       },
       "24": {
         "minimumAccuracy": 96,
         "minimumPpm": 28,
-        "expectedLength": 406,
+        "expectedLength": 830,
         "rounds": 4,
         "mode": "timeline",
-        "contentHash": "4c28123bed3effdee6383aa6cd0d2bfc8e1ab11a45a1da34b48bc5420b2e0597"
+        "contentHash": "ab6f03ea333d7f6e477842f77e23b2939d83f8d4b9eba5931fe480130a8caebc"
       }
     },
     "2": {
       "1": {
         "minimumAccuracy": 95,
         "minimumPpm": 25,
-        "expectedLength": 383,
+        "expectedLength": 455,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "ec12e7c4397f0057c85d15d23b23f1de5b49b8812ad69a654b4ad6a4afc6a8b5"
+        "contentHash": "98a27e211ede266d9fc4c8174fcc39c45f68e7656457710378e0337c8b54115e"
       },
       "2": {
         "minimumAccuracy": 95,
         "minimumPpm": 26,
-        "expectedLength": 404,
+        "expectedLength": 455,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "dc55a25a59efe0576b6b438b880c59f69a724da4e253a270cc34eaeb3489af3b"
+        "contentHash": "b407a428d20f55e0add1d5d4c9ce91fce7ae72e6a358b942e61beedcb20c15a8"
       },
       "3": {
         "minimumAccuracy": 95,
         "minimumPpm": 27,
-        "expectedLength": 405,
+        "expectedLength": 455,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "055e79783b168864a817103f10a709968791e03ca9d7e66b71283d6eb61aefb5"
+        "contentHash": "c62f8ad4d753056990c5e62e36929e9d9de0e9b57342aeecdd094991f32d1ff2"
       },
       "4": {
         "minimumAccuracy": 95,
         "minimumPpm": 27,
-        "expectedLength": 388,
+        "expectedLength": 485,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "f41761a27adb162480e91362ee1255f2f223db9e73bb17ea61d5e9c3adcc8f6e"
+        "contentHash": "c71bd4c047eeb81de938a833f3c30661367b03a769b36c83c5db1a89eeab729b"
       },
       "5": {
         "minimumAccuracy": 96,
         "minimumPpm": 29,
-        "expectedLength": 432,
+        "expectedLength": 540,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "2edbbc72ce42592df349c7b17b7a314eb9fc3e356fa6328af03c8bafe86e0e7a"
+        "contentHash": "692f13fbcb06a7116e073178bc89af5fb24046c3c8ccf9ea72fb97635e1cf8e2"
       },
       "6": {
         "minimumAccuracy": 96,
@@ -252,50 +252,50 @@
       "7": {
         "minimumAccuracy": 96,
         "minimumPpm": 30,
-        "expectedLength": 422,
+        "expectedLength": 610,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "3492fd3f2107932d13722ecdacd5fc65c1bdc82f45cd91d756a1fc02035df48d"
+        "contentHash": "c16eaaf5c12eb6acbe3134a2fb572f040c96b98ad0509217027f1c55cce45d14"
       },
       "8": {
         "minimumAccuracy": 96,
         "minimumPpm": 31,
-        "expectedLength": 415,
+        "expectedLength": 600,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "9d1a3fd7427cc4276b8567156c713a6c2570cafd9e208a3a6152e5da3e6fa558"
+        "contentHash": "2e1110663d9577516a28c5c945fc47ae13e65545aec72b05e8337720ab44551f"
       },
       "9": {
         "minimumAccuracy": 96,
         "minimumPpm": 31,
-        "expectedLength": 423,
+        "expectedLength": 515,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "18222260f65e2f329c638fc3be54ed81176085b5ff548c1f71904ffa5abdf574"
+        "contentHash": "f71260643f169e63938c46d327cec13a33c190c220ecf9824b14be50992853bc"
       },
       "10": {
         "minimumAccuracy": 96,
         "minimumPpm": 32,
-        "expectedLength": 444,
+        "expectedLength": 500,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "ab91f0c51e2f34aeeedc58cd74aaf4b51844b006b13e9a5f46b660da40dec661"
+        "contentHash": "479ca1ecf1d103dcf0112f262e72c0998a8ca49735e39727027bf144cd266321"
       },
       "11": {
         "minimumAccuracy": 96,
         "minimumPpm": 32,
-        "expectedLength": 395,
+        "expectedLength": 470,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "ce06c0928589f503c600b905a5c41f92df02b765950ee5f98dd601c212205fb0"
+        "contentHash": "905a50b86436a31e3031fe8211eb101a0d83a37f199985acf6c9dbe7e4b6a896"
       },
       "12": {
         "minimumAccuracy": 96,
         "minimumPpm": 34,
-        "expectedLength": 428,
+        "expectedLength": 535,
         "rounds": 4,
         "mode": "sprint",
-        "contentHash": "5864de47f86a5e0d7d7aedc32453205b6b4b580107f86aaaec44a9ee4ee92c7f"
+        "contentHash": "c6d90ebac080075762e945ebdc08f1e1ba6524d5907f90d6dbc93701062dcbce"
       },
       "13": {
         "minimumAccuracy": 97,
@@ -340,100 +340,100 @@
       "18": {
         "minimumAccuracy": 97,
         "minimumPpm": 36,
-        "expectedLength": 418,
+        "expectedLength": 495,
         "rounds": 4,
         "mode": "mission",
-        "contentHash": "dfe3f1ab9017c127bbd05e9a0da116e819f2e5ef64a6454217067be8b6388533"
+        "contentHash": "860ad688c4f0d0a69c1c238e5b9025bae3f277085194ace0d7577b73f295f5f3"
       },
       "19": {
         "minimumAccuracy": 97,
         "minimumPpm": 37,
-        "expectedLength": 420,
+        "expectedLength": 525,
         "rounds": 4,
         "mode": "form",
-        "contentHash": "68c5deba649404eddefaa805b409affa36424025168a053fd1b17d5c548ac4e0"
+        "contentHash": "d4ff970f3b43dde33094bdbeded050a690b61d8ab10ba6413f107538ec68c708"
       },
       "20": {
         "minimumAccuracy": 97,
         "minimumPpm": 38,
-        "expectedLength": 443,
+        "expectedLength": 695,
         "rounds": 4,
         "mode": "message",
-        "contentHash": "94b8ad82c62113b13f57132d63c4f6b7855c876fc80903bf72208a107a92a717"
+        "contentHash": "d199f869548889e09380cc453d2dc8ea62f5861efa4f0ba4bb9ef0c0394a454c"
       },
       "21": {
         "minimumAccuracy": 97,
         "minimumPpm": 39,
-        "expectedLength": 435,
+        "expectedLength": 590,
         "rounds": 4,
         "mode": "mission",
-        "contentHash": "85317b901b3d6ee2e1919db2a68b09a683875856a57762248cfe6f9aea5673af"
+        "contentHash": "1a38ea92c9f5505bb8bff23e95359e2989ea294e20e70e46ded043eab7a4b73c"
       },
       "22": {
         "minimumAccuracy": 97,
         "minimumPpm": 40,
-        "expectedLength": 438,
+        "expectedLength": 565,
         "rounds": 4,
         "mode": "message",
-        "contentHash": "e9780244919ec8e31668156c2290c5883afdfd5b0769bc699f1f3a8bc96fef4f"
+        "contentHash": "5666a588e342d3824ddfc81c7ef724cd4e0b2317dc67ad8704cb3339790b82f1"
       },
       "23": {
         "minimumAccuracy": 97,
         "minimumPpm": 41,
-        "expectedLength": 462,
+        "expectedLength": 770,
         "rounds": 4,
         "mode": "prompt",
-        "contentHash": "d73d20d2ec5340d13b838609cceab7ff34a367c1874dcdd7204a84d8fd132f25"
+        "contentHash": "42b06d90853d58b3bde0ecb51f6463468ba3b0f4de9cece0534ba86d4398f7b0"
       },
       "24": {
         "minimumAccuracy": 98,
         "minimumPpm": 42,
-        "expectedLength": 450,
+        "expectedLength": 610,
         "rounds": 4,
         "mode": "timeline",
-        "contentHash": "e1b364c1560d607edd8693b28eca5af7e36544b3ad1a50e5702e1b51ca7ab803"
+        "contentHash": "e2051db713993187915b7a382399d235a1c6e0fb89c4cc57ea92d4d4280f0358"
       }
     },
     "3": {
       "1": {
         "minimumAccuracy": 97,
         "minimumPpm": 18,
-        "expectedLength": 168,
+        "expectedLength": 185,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "075532fb59508d9c4dbaeea10d8a964e6f5c63b21b52168d48a3050582a6b991"
+        "contentHash": "dd9900ce1acd92c5ca6753bc5190aa0a52ec923a71743c9a960b75add364132d"
       },
       "2": {
         "minimumAccuracy": 97,
         "minimumPpm": 20,
-        "expectedLength": 176,
+        "expectedLength": 220,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "5cde693db782b2b9f56a07777638208390cfe9ab356c1516bb244cb74655cd46"
+        "contentHash": "f7d3c55bc09d778dbc391c10f70181c12d2e90bee6fd7b6e630ac676dca7040b"
       },
       "3": {
         "minimumAccuracy": 97,
         "minimumPpm": 22,
-        "expectedLength": 176,
+        "expectedLength": 220,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "2108b2304e4f562bfcf49aa2a05276b204eeae8c7aef8f18f9d5d3b3890dec95"
+        "contentHash": "545625b30595767841e283f48d698bfae97506952d83c78462fc02fb0e7004d5"
       },
       "4": {
         "minimumAccuracy": 97,
         "minimumPpm": 24,
-        "expectedLength": 176,
+        "expectedLength": 220,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "4d828ba4c657be761bbec896e28377686dfa30c0b6be6329fce09c2ba8438bab"
+        "contentHash": "8b33005652cdd7b2bdd178dd7cb8ebce6a156eac773c3b8ce7c0ea1b2d784b64"
       },
       "5": {
         "minimumAccuracy": 97,
         "minimumPpm": 26,
-        "expectedLength": 164,
+        "expectedLength": 250,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "e9296dcf5102411a095c966cc47b2298f3ad287fa541f480c78fe3e9096c424e"
+        "contentHash": "6e08fc8b361afdee11a6225b4ffb622b88c3d382b09808c38e7094c18db776de"
       },
       "6": {
         "minimumAccuracy": 97,
@@ -446,42 +446,42 @@
       "7": {
         "minimumAccuracy": 97,
         "minimumPpm": 29,
-        "expectedLength": 172,
+        "expectedLength": 170,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "0acdfcc3d9ecedc3fff41d8f4e2c84f5cfb57f5809f9fcf3763dbd7caa323fb0"
+        "contentHash": "b13dbb03915c9cf3e633ab19e3b0f1fe494505186b65517b88690073b6a6a172"
       },
       "8": {
         "minimumAccuracy": 97,
         "minimumPpm": 30,
-        "expectedLength": 175,
+        "expectedLength": 275,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "b390eee7b88539ec30219aefa504f669ec64030f35ad8d82ae60164881ab8992"
+        "contentHash": "88a0eb6f09cf41886bccc70cbb6af52ae83c90b9a4c2fa08ea7279d175f2af09"
       },
       "9": {
         "minimumAccuracy": 98,
         "minimumPpm": 31,
-        "expectedLength": 178,
+        "expectedLength": 260,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "8d621741fc3627924569bb2f7a0dd753fee920eae15a3b640a5f5a3e3379109a"
+        "contentHash": "dfdfd0e71a6d6c6e42350e9c06ad74d403d54b119660c32c92bee71b27fafb1a"
       },
       "10": {
         "minimumAccuracy": 98,
         "minimumPpm": 32,
-        "expectedLength": 169,
+        "expectedLength": 200,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "5870af5afcec33078ed2835756333cee9242e514222d69e40f9ae3db6b3dadfc"
+        "contentHash": "c27dfa466ce1e3eeb647cfee5bbb7d3b1247c6673cfa82c9023ede705e1e9ab4"
       },
       "11": {
         "minimumAccuracy": 98,
         "minimumPpm": 33,
-        "expectedLength": 164,
+        "expectedLength": 170,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "2aeeb1eaa3b6d7be7d1082083598e4892ede18e40db8eebfb663c001184a36b7"
+        "contentHash": "9dd2e2de457d0f041acd6c2496291fabd1d9ad4f323489aa76a063c44aaecf0c"
       },
       "12": {
         "minimumAccuracy": 98,
@@ -542,10 +542,10 @@
       "19": {
         "minimumAccuracy": 98,
         "minimumPpm": 36,
-        "expectedLength": 385,
+        "expectedLength": 520,
         "rounds": 4,
         "mode": "form",
-        "contentHash": "2773ed44a5a0d17f72e7f682667d2fce02ea93ef2822d81858aed4f4c78e18a9"
+        "contentHash": "ffe78e1138c164d7b35fa980eda5b7698a48172e366e129a02e94634627df8ee"
       },
       "20": {
         "minimumAccuracy": 98,
@@ -558,26 +558,26 @@
       "21": {
         "minimumAccuracy": 98,
         "minimumPpm": 39,
-        "expectedLength": 410,
+        "expectedLength": 460,
         "rounds": 4,
         "mode": "mission",
-        "contentHash": "103d18a548f05ddaa209fa9c956a9bf54d8577ce555a548d42e32749afc6c0af"
+        "contentHash": "f6d3a21f0b8393e5f83661dd50fa48f095f95aa39133c09f9d03f7f971acddf5"
       },
       "22": {
         "minimumAccuracy": 98,
         "minimumPpm": 40,
-        "expectedLength": 377,
+        "expectedLength": 485,
         "rounds": 4,
         "mode": "message",
-        "contentHash": "1af0f2a450c9651e1df3acde845aee190c0d721382aa0066dd8f906771d582de"
+        "contentHash": "8a01e14165b68bcada17955c6a3967bccbc20ad9fb0c74ae4701c8cbe1b05ce7"
       },
       "23": {
         "minimumAccuracy": 98,
         "minimumPpm": 41,
-        "expectedLength": 412,
+        "expectedLength": 620,
         "rounds": 4,
         "mode": "prompt",
-        "contentHash": "0719f0adf4f1f823e33e7ad0d2e77063fe5173b00a51d6c898ed6e3816608003"
+        "contentHash": "2461875a6f63ea046192e1767db020374591878b3e8b7f7fed1c0db47db52621"
       },
       "24": {
         "minimumAccuracy": 98,
