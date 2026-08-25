@@ -1,5 +1,5 @@
 {
-  "version": "20260825-2",
+  "version": "20260825-3",
   "course": {
     "title": "Curso de Digitação F5",
     "hours": 20,
@@ -10,162 +10,162 @@
       "1": {
         "minimumAccuracy": 90,
         "minimumPpm": 7,
-        "expectedLength": 208,
+        "expectedLength": 245,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "91ded0b2306b499970f50684e9b3ee408bdc823f56442ab6f27328b5ba12e12a"
+        "contentHash": "d61b14f1917ee5b78b2500da997cb7bbf652aa3d01563b82eba4277951aa28e4"
       },
       "2": {
         "minimumAccuracy": 90,
         "minimumPpm": 8,
-        "expectedLength": 208,
+        "expectedLength": 241,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "320e394c4f9e7b98e65d0da56630d58808f29255a8abf5c4809664fb2933fe60"
+        "contentHash": "2abd8e525546f5766fc56bb957ab23918ddd8a242f3ca0bc14c55c50c1d3028a"
       },
       "3": {
         "minimumAccuracy": 91,
         "minimumPpm": 9,
-        "expectedLength": 208,
+        "expectedLength": 234,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "8dd08a8d6509c082828de8956d4650ee1b1d7bcc54e99f0382f57debccf99ecd"
+        "contentHash": "4b10de0260f182f6df68cc244db730e77caf1bfcbac7c3561857a055ede548a2"
       },
       "4": {
         "minimumAccuracy": 91,
         "minimumPpm": 9,
-        "expectedLength": 208,
+        "expectedLength": 230,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "7c2e135228028a07737d625d40617e9e08430a6b72ef3e43c1523084dc27881f"
+        "contentHash": "a39086e5a6674635493a5ef6c23f8710bb1e4eb330f523588d28b225b87df1dc"
       },
       "5": {
         "minimumAccuracy": 92,
         "minimumPpm": 10,
-        "expectedLength": 208,
+        "expectedLength": 238,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "863ad4899847cc23051f2b38f7a74482697d9ccb6cffd4398a7ce6ad553ec626"
+        "contentHash": "c61ddb5e93051e74adeb961fa433b7e5e4f661c507b1abfea111295785fbccf6"
       },
       "6": {
         "minimumAccuracy": 92,
         "minimumPpm": 12,
-        "expectedLength": 208,
+        "expectedLength": 260,
         "rounds": 4,
         "mode": "sprint",
-        "contentHash": "2f347d95fad99205e0df92921d4a4a0ecc13235bee64894ab996a3b93892c3de"
+        "contentHash": "8563161d9feaa6af1830224c53670538e7bd5d7d5099d94e07d468c8cc2b1a3c"
       },
       "7": {
         "minimumAccuracy": 92,
         "minimumPpm": 13,
-        "expectedLength": 256,
+        "expectedLength": 304,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "73f823294f57095c958d680428976327c7da83f0ae30e59adce3d9269cd58456"
+        "contentHash": "5d231ade8e72be78fac7b1f9dbac20df7a932b28f39825f975d61ea36cac41bc"
       },
       "8": {
         "minimumAccuracy": 93,
         "minimumPpm": 14,
-        "expectedLength": 256,
+        "expectedLength": 297,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "6bff7f559c4c38b0b05b1dccb80928542005182588993df25c40b43769a7bf25"
+        "contentHash": "0b5801783f2f5acd488ee33e4e72017cd985454ca47ba5d49c5f0bb2bbdca72c"
       },
       "9": {
         "minimumAccuracy": 93,
         "minimumPpm": 15,
-        "expectedLength": 256,
+        "expectedLength": 299,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "65c793dd4f1b4eccb6a49077c94f4812d1ddd839c508fc9de082d66fe3b26b90"
+        "contentHash": "75217cba30ca437ea7213b3af43cb0fe472957c80ada5eb0d8164b41dea29a70"
       },
       "10": {
         "minimumAccuracy": 93,
         "minimumPpm": 15,
-        "expectedLength": 256,
+        "expectedLength": 296,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "33a718a44f720d56cc647f5986de0104af6407ffa920cfcf3ae6b969d90cb3e6"
+        "contentHash": "586a7e63fc783fac3ba3145bea0cfd3c88c02823a9d1740c672896e9099a6d6f"
       },
       "11": {
         "minimumAccuracy": 94,
         "minimumPpm": 16,
-        "expectedLength": 256,
+        "expectedLength": 283,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "ea54c005d8540837fbf2b7580f4d22321aa638dbf214889ac1d3d57b5163414b"
+        "contentHash": "4d635fa1f9c5b1490d8c3c2d09ac001d63a8c0517d99ccdf16020d8ee535b266"
       },
       "12": {
         "minimumAccuracy": 94,
         "minimumPpm": 18,
-        "expectedLength": 256,
+        "expectedLength": 292,
         "rounds": 4,
         "mode": "timeline",
-        "contentHash": "fa6b07287a004b7677c3ce9c1b0d2499601031f19181b11bd568fc7131b720f2"
+        "contentHash": "06e991304aa5d0f4c2792ddaf3035d95255e28d495b743652cbdf1ffc2f2fb03"
       },
       "13": {
         "minimumAccuracy": 94,
         "minimumPpm": 18,
-        "expectedLength": 296,
+        "expectedLength": 351,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "f222232082c0760099c605c88d9dd28de87c4622796fca688cb1fdc9bd59b728"
+        "contentHash": "efbc0759f2d6751fde86935057a74aad2fb9671d6042bc411327fc30368194f2"
       },
       "14": {
         "minimumAccuracy": 94,
         "minimumPpm": 19,
-        "expectedLength": 296,
+        "expectedLength": 364,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "3a149422be9e0cf9f8e300e107a1ab3ea0007432d507bb4db7fcbe54308dd586"
+        "contentHash": "78baeebb2959e35eabe649d1bd479a3b027a161b3cdb9a450ce8cf95bf6f6eff"
       },
       "15": {
         "minimumAccuracy": 94,
         "minimumPpm": 20,
-        "expectedLength": 296,
+        "expectedLength": 361,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "783671b8a3280cd5073d68fa9b53a0dc6d13307170faddef7351ff3f48ec208e"
+        "contentHash": "23aa78c0d3a1960a0aade79719d748451c9ef304543c03771abccd37d636f76f"
       },
       "16": {
         "minimumAccuracy": 95,
         "minimumPpm": 20,
-        "expectedLength": 296,
+        "expectedLength": 338,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "feceb2bc9f9268f4b646809b7be56c43af9127c20e66ff28583b3f399ba22480"
+        "contentHash": "41d37a84a7f575e67dece08b553576175dbf9c96c9920499516f29ed37c00708"
       },
       "17": {
         "minimumAccuracy": 95,
         "minimumPpm": 20,
-        "expectedLength": 296,
+        "expectedLength": 355,
         "rounds": 4,
         "mode": "wordgame",
-        "contentHash": "3a612e629543fe9270f2089b048c708e753af5038519fd26a605715cf03b01a0"
+        "contentHash": "6681ada2e2fe3739512c4d8f52f6e765e43699f96545dddf58ce57daf6670350"
       },
       "18": {
         "minimumAccuracy": 95,
         "minimumPpm": 22,
-        "expectedLength": 296,
+        "expectedLength": 342,
         "rounds": 4,
         "mode": "timeline",
-        "contentHash": "d588a4c445597691d364ab296ac16608d9e0312136268ae87f3866445509c43c"
+        "contentHash": "f530ed89f51663d36bd8ef3d3514ecbad494ddf663e9ebd358caafbdf2dc9578"
       },
       "19": {
         "minimumAccuracy": 95,
         "minimumPpm": 22,
-        "expectedLength": 352,
+        "expectedLength": 459,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "ec20726a38ea4d5ed305a88ef1ca86e3eebfb20beb14dc85922923a4583eb0c3"
+        "contentHash": "95becc82697372675f4f3d108e97e33e0e08084feed980591f2e8eedcd33047d"
       },
       "20": {
         "minimumAccuracy": 95,
         "minimumPpm": 23,
-        "expectedLength": 352,
+        "expectedLength": 394,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "1f137e1e477474fec448a3fb72472c37d0510adec7b62bad110d6112437677a2"
+        "contentHash": "42baab6582c7947be133b05da1fdd25b9c3d02cf54467865f4076a1852e6bc94"
       },
       "21": {
         "minimumAccuracy": 95,
@@ -173,129 +173,129 @@
         "expectedLength": 123,
         "rounds": 4,
         "mode": "correction",
-        "contentHash": "59c8f3be3ba043124a67c7fce86b48a5992d5108816cb862b90d4d94e297ee10"
+        "contentHash": "5467448439f92ebb62f26a6aaa2ce7729f43128bafde73848073e191dfb7b46d"
       },
       "22": {
         "minimumAccuracy": 96,
         "minimumPpm": 24,
-        "expectedLength": 352,
+        "expectedLength": 400,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "f3f0196b7e5a554327bcdd393d300d2e2c227ba030844ed65f42b0cfdede911c"
+        "contentHash": "8d608d4304d957898d03cbe32a2c34432f946fbd31d0a289cdd965dc685302cf"
       },
       "23": {
         "minimumAccuracy": 96,
         "minimumPpm": 26,
-        "expectedLength": 352,
+        "expectedLength": 430,
         "rounds": 4,
         "mode": "message",
-        "contentHash": "577ad0eae90c81c9b651c462be4d8add09b7a6b04134dab2f5cd5e7b80808f66"
+        "contentHash": "02dc14fd81766d7ac6ab1c6c48cdf10f2094cb96f659ee6e36214cfffc2f1f3e"
       },
       "24": {
         "minimumAccuracy": 96,
         "minimumPpm": 28,
-        "expectedLength": 352,
+        "expectedLength": 412,
         "rounds": 4,
         "mode": "timeline",
-        "contentHash": "16c9e4d85cf721f73e99d71cf8884b5cdfe6d1268fcffe40ac73457fc9666f07"
+        "contentHash": "0092c718e07ef07d4b480a688036b67896a66671f830b3052772dbcceeff41cc"
       }
     },
     "2": {
       "1": {
         "minimumAccuracy": 95,
         "minimumPpm": 25,
-        "expectedLength": 368,
+        "expectedLength": 396,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "c1fb32727db1d60d45f0142cb239b6590741900211c680b77fe95591ab56330a"
+        "contentHash": "5db79d250982739c8d3175d73f77b7c6c6369c92996cceada77cda08b2406abf"
       },
       "2": {
         "minimumAccuracy": 95,
         "minimumPpm": 26,
-        "expectedLength": 368,
+        "expectedLength": 418,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "4843c0a7c6ea9e9065f167b6bcf157de9ea1130eb0222d43f2ec48918629fb78"
+        "contentHash": "fb9426b76755a4c07b6c8db3eb766571e2b317eb003eb6df06edecee91c3440d"
       },
       "3": {
         "minimumAccuracy": 95,
         "minimumPpm": 27,
-        "expectedLength": 368,
+        "expectedLength": 419,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "0a34fc90dba0c8cb4cc4338c5b1ea46340bc987b5a4b51c2bc338787789a248c"
+        "contentHash": "960786d4399bfc8c90f22f635533fcd82e655972aa45f6a514856cf35c36ec67"
       },
       "4": {
         "minimumAccuracy": 95,
         "minimumPpm": 27,
-        "expectedLength": 368,
+        "expectedLength": 400,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "72f0bd5103c753f079c0daf2a244093871aa79281d6854f5d69ae051d3fd6d8a"
+        "contentHash": "b46fef526e1e0e9ed6be0debd8715fcc2cb8356202ced29fc34c46e1d7d36957"
       },
       "5": {
         "minimumAccuracy": 96,
         "minimumPpm": 29,
-        "expectedLength": 368,
+        "expectedLength": 444,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "d8bae5da4f82404817a234b093fb551792105a2987eb56e75226a2b7a615c92f"
+        "contentHash": "d02c6bc3b37b478e35741a00613c9bcadc48d99b097983505e4c02f01ca8027e"
       },
       "6": {
         "minimumAccuracy": 96,
         "minimumPpm": 30,
-        "expectedLength": 248,
+        "expectedLength": 296,
         "rounds": 4,
         "mode": "wordgame",
-        "contentHash": "f99c292e8164f3c46e128ea7aea638f33c81634ab803f65e0f6e4f59e88435ee"
+        "contentHash": "a500ae954dce52ee3c1822eb6b24858217a85db8bd8e2385cd4b5788885a86c5"
       },
       "7": {
         "minimumAccuracy": 96,
         "minimumPpm": 30,
-        "expectedLength": 368,
+        "expectedLength": 432,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "5dc16e26e6918622e0fec17578bb8a2b9dd2010277f43ed9863ef2d6f4afa454"
+        "contentHash": "2488d935ed1e8af255ce8bf85f8de7d1cc0271b5253d0d8fd633ca6f9a4f2fa4"
       },
       "8": {
         "minimumAccuracy": 96,
         "minimumPpm": 31,
-        "expectedLength": 368,
+        "expectedLength": 394,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "69d539633b5cc83f947401a32a4fe55a918b3fa1cbb9cf4d5b929070a584a10c"
+        "contentHash": "52c63bc4944b6b0eac5dcad3332725db1c83ef087b291c525a0e62a87c1de272"
       },
       "9": {
         "minimumAccuracy": 96,
         "minimumPpm": 31,
-        "expectedLength": 368,
+        "expectedLength": 405,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "4179534f20cf7df97b110c1a851783cff40ad87b40ed8f7a92b6040ad285a57a"
+        "contentHash": "3125d9b4f17e0ba28d097bff25f764c99a4cf320a0fac69567933d3d57c23c1f"
       },
       "10": {
         "minimumAccuracy": 96,
         "minimumPpm": 32,
-        "expectedLength": 368,
+        "expectedLength": 458,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "10c8383e201aae892b91f1b7c1563b410685d2dd9e2c1a04a96b846bd7072f1e"
+        "contentHash": "886e8a983d56cd8e786b6cbfabf64329d35ad62008e2c5f232e8dd3377936e94"
       },
       "11": {
         "minimumAccuracy": 96,
         "minimumPpm": 32,
-        "expectedLength": 368,
+        "expectedLength": 408,
         "rounds": 4,
         "mode": "typing",
-        "contentHash": "59ab00aa8986638d52f003050e2dee74389af4e2ae80afdd1afee82226f27b91"
+        "contentHash": "7db02f8f228e1902c238bda9ca1a39b6a1b37664530bd8ccadaff0d9c3b66843"
       },
       "12": {
         "minimumAccuracy": 96,
         "minimumPpm": 34,
-        "expectedLength": 368,
+        "expectedLength": 409,
         "rounds": 4,
         "mode": "sprint",
-        "contentHash": "3ee7bc6a115ac39aa4193fdfa125c62fbe681038f53d0fc155acf8cd4c223c2f"
+        "contentHash": "5783b057899d5641a81c9610728ed5702a2284100da40242406892f2ee88a69b"
       },
       "13": {
         "minimumAccuracy": 97,
@@ -303,7 +303,7 @@
         "expectedLength": 87,
         "rounds": 4,
         "mode": "keypractice",
-        "contentHash": "451a3b67ea46c2ad599cdbdf82d2f172ef4d52ce6fff98b3e1c674c89d04358c"
+        "contentHash": "db364a5001c8d833d59abfe1a541e367dbdeb15d6711b72a91b65565aadb439e"
       },
       "14": {
         "minimumAccuracy": 97,
@@ -311,23 +311,23 @@
         "expectedLength": 64,
         "rounds": 4,
         "mode": "keypractice",
-        "contentHash": "e42cfcee5a4a48c33061e3c3e33c9314eb5d72257173aa8c52b1f87980089478"
+        "contentHash": "255e4e396be70e20d32fc50a72a2a01f0e2a0f7211772fdbc573741f2ad15321"
       },
       "15": {
         "minimumAccuracy": 97,
         "minimumPpm": 35,
-        "expectedLength": 69,
+        "expectedLength": 92,
         "rounds": 4,
         "mode": "keypractice",
-        "contentHash": "935da7d9e20d3761b0b3902c496265b26db97a00519457cc775dc9c6d75317c5"
+        "contentHash": "c7c2bb62a2f8ed3a617c27175be70639aa3b4dcf3f21f7ed5c2fb7b41f378054"
       },
       "16": {
         "minimumAccuracy": 97,
         "minimumPpm": 35,
-        "expectedLength": 72,
+        "expectedLength": 88,
         "rounds": 4,
         "mode": "keypractice",
-        "contentHash": "1c30fc598820ad6ad0dd02e0fa86c47c1420b78d5856e9fad2fdc499178f7788"
+        "contentHash": "e76baa4b4bbf207bd8a204711329a5171842f0a7900877e2c9a4d1dd4e6e454a"
       },
       "17": {
         "minimumAccuracy": 97,
@@ -335,105 +335,105 @@
         "expectedLength": 64,
         "rounds": 4,
         "mode": "keypractice",
-        "contentHash": "30e715a27c347a02f576be0859168df047c32cade411f741788891c90052106b"
+        "contentHash": "7f031c519cb82f70c2556782b89bb39da4afca0f9a4c29f96d25110e1f6b2848"
       },
       "18": {
         "minimumAccuracy": 97,
         "minimumPpm": 36,
-        "expectedLength": 368,
+        "expectedLength": 431,
         "rounds": 4,
         "mode": "mission",
-        "contentHash": "769102787af492e9ec19eb04b513d269649c414eda5096e012e6c2bd1f65da64"
+        "contentHash": "c4f8f3af82aefb84d0ab71c8ec5a72ed1d39e43ed38958d32a53d314a9f96fb9"
       },
       "19": {
         "minimumAccuracy": 97,
         "minimumPpm": 37,
-        "expectedLength": 368,
+        "expectedLength": 432,
         "rounds": 4,
         "mode": "form",
-        "contentHash": "48748ec2fd4b6007313d7f23e87b911f49d0a24536abaf117eff8118a2518a60"
+        "contentHash": "854d13fb2c6466e2a934c474dcf8804615f5a5a6cc5cb60f3d001e553161947c"
       },
       "20": {
         "minimumAccuracy": 97,
         "minimumPpm": 38,
-        "expectedLength": 368,
+        "expectedLength": 452,
         "rounds": 4,
         "mode": "message",
-        "contentHash": "55379b03b96833f0296a69fcf5b9a1ac5e75acf9915f2269acc9bfe50ed02df6"
+        "contentHash": "d09b6f36b9c80f6d34209b533a2180e33ab75a6b3f102af242e7dca4e9a27f6b"
       },
       "21": {
         "minimumAccuracy": 97,
         "minimumPpm": 39,
-        "expectedLength": 368,
+        "expectedLength": 415,
         "rounds": 4,
         "mode": "mission",
-        "contentHash": "8512cd64f6955c77df469918298ab1e491166c6395c6be38ad1de007727f1c62"
+        "contentHash": "d0dd6e7b5a328c2c58daf1464629d1c077d275fee2700947d38e41656b5d17c5"
       },
       "22": {
         "minimumAccuracy": 97,
         "minimumPpm": 40,
-        "expectedLength": 368,
+        "expectedLength": 450,
         "rounds": 4,
         "mode": "message",
-        "contentHash": "bccb12677498f9702547dc9e211d77056a1e2debf207269825890f883d532c51"
+        "contentHash": "a8e8e49d46fdf40231592f087dc577fd779d72d75c8b5e6ece98082b51509763"
       },
       "23": {
         "minimumAccuracy": 97,
         "minimumPpm": 41,
-        "expectedLength": 368,
+        "expectedLength": 470,
         "rounds": 4,
         "mode": "prompt",
-        "contentHash": "fbbf92ddaad21d103217df447c0e9a6d7d88ae077bd85a4df4e2f23edfd69004"
+        "contentHash": "63dff3565e2053f27c436701cfcefc5be3bc5c32fde84f380912437b97c525bd"
       },
       "24": {
         "minimumAccuracy": 98,
         "minimumPpm": 42,
-        "expectedLength": 368,
+        "expectedLength": 430,
         "rounds": 4,
         "mode": "timeline",
-        "contentHash": "7f849806489d67aac0294d0ef3b8d06d501d3efb445ba7f0499fe322e7a525c8"
+        "contentHash": "b3e02ae36f6aad3cdacdcf544cbb978a4c208b5e63040336a37cc8b70a4c3eae"
       }
     },
     "3": {
       "1": {
         "minimumAccuracy": 97,
         "minimumPpm": 18,
-        "expectedLength": 152,
+        "expectedLength": 158,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "62f8fff6e08878d467afc8ed086e552c737ef297f868112369bbd813060af82e"
+        "contentHash": "8b31b1559cc748cb38d71a033f1d72df3c35c05ab7fa36b9af0c0c0797fb5e6e"
       },
       "2": {
         "minimumAccuracy": 97,
         "minimumPpm": 20,
-        "expectedLength": 152,
+        "expectedLength": 188,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "87c08ca231e9822dc4181e2c8a8a7535db28360186d36c446b8b20a7816b9c01"
+        "contentHash": "0d5fc0fb5f56f4585568c18f6850b7953247e2e42fe64d0d20bfb6aab1d71b0c"
       },
       "3": {
         "minimumAccuracy": 97,
         "minimumPpm": 22,
-        "expectedLength": 152,
+        "expectedLength": 188,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "79d4bdda1087acf19eee16e55806e998c4ce45d2762cec3d89901bd6999b8d9f"
+        "contentHash": "0175190289bb684562e0da77443fc9400380f7e7542dd74605d604c47e76e262"
       },
       "4": {
         "minimumAccuracy": 97,
         "minimumPpm": 24,
-        "expectedLength": 152,
+        "expectedLength": 188,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "b31f23b7032e97cd99eee012dc2ceacece8667f049686ab35ea61b2828df8682"
+        "contentHash": "5aec68c69ee125f1e09c70a04ac170bd25874510277bcd090c4afd58f9db48a2"
       },
       "5": {
         "minimumAccuracy": 97,
         "minimumPpm": 26,
-        "expectedLength": 152,
+        "expectedLength": 165,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "1d0567b4eac0227280c086378a346c849950101aceb208fa775ef3496797af16"
+        "contentHash": "8a81f854954e2f6941cd3fad2c83a735b5974614b1489e65fbdd72237c541a49"
       },
       "6": {
         "minimumAccuracy": 97,
@@ -441,47 +441,47 @@
         "expectedLength": 30,
         "rounds": 4,
         "mode": "cashgame",
-        "contentHash": "db872e8b45c5e3ad43c87f7f874a89d07fddd2b7a50c4afdc93f700a102c73e1"
+        "contentHash": "87846f60f503856d8dd59b883bed98846e501f4c42aa215013aeba2f35fe0d04"
       },
       "7": {
         "minimumAccuracy": 97,
         "minimumPpm": 29,
-        "expectedLength": 152,
+        "expectedLength": 176,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "37daa35594f21bb327cc166e0166f89ceaa7a68fd7deaadb133482c99cb2211e"
+        "contentHash": "70ffb6242afa9cd7037a97b15062763acae438fd12bb05b3595a4328bb9ddc8a"
       },
       "8": {
         "minimumAccuracy": 97,
         "minimumPpm": 30,
-        "expectedLength": 152,
+        "expectedLength": 184,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "3844f9ce46beb4d24148fa3dffe9f7d9979c2b4ef170fb32ec0ed56aa3075d39"
+        "contentHash": "7da73ae27b28082726fc2dad36fb37af6e62837fe9d12cb2e4690a7456c6a412"
       },
       "9": {
         "minimumAccuracy": 98,
         "minimumPpm": 31,
-        "expectedLength": 152,
+        "expectedLength": 175,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "fb722e9a18b397bc3c5960afafd1e9492ea5ed828c32301fc4e4fc925348c92e"
+        "contentHash": "e7be338cec081e3a194fcc5f00a6acd68538e057b15fa3a34da506d11035b22d"
       },
       "10": {
         "minimumAccuracy": 98,
         "minimumPpm": 32,
-        "expectedLength": 152,
+        "expectedLength": 172,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "8e76b1d7bab258276b6e414a881a05d5311dc8838ce11b26b8e81dce4ee34c07"
+        "contentHash": "498d84f2a1ed26d8294be9a28dab36ebce9feafbb2415d10b6baac265e08f5a2"
       },
       "11": {
         "minimumAccuracy": 98,
         "minimumPpm": 33,
-        "expectedLength": 152,
+        "expectedLength": 164,
         "rounds": 4,
         "mode": "numpad",
-        "contentHash": "263861085b06e3263faff05f514daac22255d324f71ebf6c90a5553b61733cc9"
+        "contentHash": "f5fd2427d667fa70abf06abd1ddfb35c270de02f609ca2ca9e39af0037dddccb"
       },
       "12": {
         "minimumAccuracy": 98,
@@ -489,7 +489,7 @@
         "expectedLength": 31,
         "rounds": 4,
         "mode": "auditgame",
-        "contentHash": "905da6a4dbded3216c4c93cd5043daec8653c647a9b89da561cf2faa0b8b986f"
+        "contentHash": "b97e9024c23bae0c5d0ca0c7b104f820f9923514d889a266383c3779afeb45c6"
       },
       "13": {
         "minimumAccuracy": 98,
@@ -497,7 +497,7 @@
         "expectedLength": 54,
         "rounds": 4,
         "mode": "shortcutgame",
-        "contentHash": "5ed4a26279a5006e45aa4c2d3b5cd1197ff08647523d8dc3d70ad3591288cb12"
+        "contentHash": "5d3471839ecc1d8efddb604a38e856e7d79abd2e09edede3839fe2677c9decd1"
       },
       "14": {
         "minimumAccuracy": 98,
@@ -505,7 +505,7 @@
         "expectedLength": 69,
         "rounds": 4,
         "mode": "shortcutgame",
-        "contentHash": "c357bb1432fc9633d454e6995c8011e737afa22ac6717f241ec47cf31f77c65d"
+        "contentHash": "a8fcc3155c8822a1cd5c2d5d72b6768cecd62b05fa2e12723411cbaa8c081cd5"
       },
       "15": {
         "minimumAccuracy": 98,
@@ -513,7 +513,7 @@
         "expectedLength": 65,
         "rounds": 4,
         "mode": "shortcutgame",
-        "contentHash": "cb06beaeb451e1203bc4a1b3507037f3c3c118b209ead17b97ca90322c6de8b2"
+        "contentHash": "62972ad701739892262a4bb95395ce6841f741f611b74ae3a0b0789ec94daea2"
       },
       "16": {
         "minimumAccuracy": 98,
@@ -521,7 +521,7 @@
         "expectedLength": 73,
         "rounds": 4,
         "mode": "shortcutgame",
-        "contentHash": "fea3abfb9c82f45827aede70f9378a8da28e18511e075b41cf25b97d4145aff3"
+        "contentHash": "4044c8d7437365f19acc1a40e50dd574991e9fb8a4930c18ab6e5ef5a6b6cff3"
       },
       "17": {
         "minimumAccuracy": 98,
@@ -529,7 +529,7 @@
         "expectedLength": 39,
         "rounds": 4,
         "mode": "shortcutgame",
-        "contentHash": "87f1428f5f4929b6f729aae413f23b7008f5b59c16969d5fe3184931a40f806b"
+        "contentHash": "4c62a4c4422e13029c4c24b6ac861490eb81f29c452bed069b8095bbef7e7825"
       },
       "18": {
         "minimumAccuracy": 98,
@@ -537,15 +537,15 @@
         "expectedLength": 48,
         "rounds": 4,
         "mode": "shortcutgame",
-        "contentHash": "e408571bd768ec9978630340fa700543be3c47618cef7515dea4d2b4ea1a9b17"
+        "contentHash": "add2fee2ec6a79f1bdb4e29fea11439bc3ccb867cef726c52fef13e80f0b2e6d"
       },
       "19": {
         "minimumAccuracy": 98,
         "minimumPpm": 36,
-        "expectedLength": 344,
+        "expectedLength": 396,
         "rounds": 4,
         "mode": "form",
-        "contentHash": "f5bd7700c344e04116ba3bc91c79100a95b2e11408164bb0fc9ef3589e053d9c"
+        "contentHash": "36b1afe5a074d01a6e246b0635944ef88f01126850be273e3130e0170eab7b8e"
       },
       "20": {
         "minimumAccuracy": 98,
@@ -553,31 +553,31 @@
         "expectedLength": 31,
         "rounds": 4,
         "mode": "cashgame",
-        "contentHash": "fbddae2a4aca7f32abcd765d94ee7c55814fd0344d229ed381f8f0d404319182"
+        "contentHash": "807aee7e67ba978a88c457efc0b3ba99ca4027bdc7c0ea61ed27d469ad980023"
       },
       "21": {
         "minimumAccuracy": 98,
         "minimumPpm": 39,
-        "expectedLength": 344,
+        "expectedLength": 380,
         "rounds": 4,
         "mode": "mission",
-        "contentHash": "3d328e133c7c1cbc22d7797974d98ece82068cdb68e7dcb318e257f999bb0743"
+        "contentHash": "786832a56894e7a7e37eb6946a6299df4ab8df0cc923be47897afcaad912018f"
       },
       "22": {
         "minimumAccuracy": 98,
         "minimumPpm": 40,
-        "expectedLength": 344,
+        "expectedLength": 367,
         "rounds": 4,
         "mode": "message",
-        "contentHash": "7ccefd83ebf4b0f91e8e2ed04e57a07d5c76fc19b08b81db78e4f48b82e432c2"
+        "contentHash": "79b5af14b8e20035c698f01dce5a97e9ce7bb759d91789188f92ae231328191d"
       },
       "23": {
         "minimumAccuracy": 98,
         "minimumPpm": 41,
-        "expectedLength": 344,
+        "expectedLength": 422,
         "rounds": 4,
         "mode": "prompt",
-        "contentHash": "47c029f9bdf51dfffc9a755160291ba6ea9eb307e03e4325413262baa46d17e2"
+        "contentHash": "40db3ac59b712d4c1662f9fd47e82a212f62930b49ca7352ff5574096f969a0c"
       },
       "24": {
         "minimumAccuracy": 98,
@@ -585,7 +585,7 @@
         "expectedLength": 63,
         "rounds": 4,
         "mode": "officechallenge",
-        "contentHash": "8d84c2fb0c7a5991e4d982ab72e233b2635ac9492b54f4353fc09c2e63cb693f"
+        "contentHash": "ed1d96b7ec44a6ec52b5b07bc37eebe110f9dbc195709e7e60b19a4ac9d9f3c3"
       }
     }
   }
