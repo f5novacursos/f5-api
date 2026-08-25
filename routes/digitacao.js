@@ -8,7 +8,8 @@ const db = require('../db');
 const curriculum = require('../data/digitacao-curriculo.json');
 
 const router = express.Router();
-const JWT_SECRET = process.env.DIGITACAO_JWT_SECRET || process.env.EAD_JWT_SECRET || '';
+const EAD_JWT_SECRET = process.env.EAD_JWT_SECRET || '';
+const JWT_SECRET = process.env.DIGITACAO_JWT_SECRET || EAD_JWT_SECRET;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '163041222391-rmnha7n1jcni0nu19bflgvpq6f6ufm0j.apps.googleusercontent.com';
 const TOTAL_EXERCISES = curriculum.course.totalExercises;
 
@@ -37,6 +38,9 @@ async function migrate() {
       ultimo_acesso TIMESTAMPTZ
     )`);
   await db.query('CREATE UNIQUE INDEX IF NOT EXISTS digitacao_usuarios_email_unique ON digitacao_usuarios (LOWER(email))');
+  await db.query('ALTER TABLE digitacao_usuarios ADD COLUMN IF NOT EXISTS ead_usuario_id BIGINT');
+  await db.query('ALTER TABLE digitacao_usuarios ADD COLUMN IF NOT EXISTS cidade VARCHAR(160)');
+  await db.query('CREATE UNIQUE INDEX IF NOT EXISTS digitacao_usuarios_ead_unique ON digitacao_usuarios (ead_usuario_id) WHERE ead_usuario_id IS NOT NULL');
   await db.query(`
     CREATE TABLE IF NOT EXISTS digitacao_tentativas (
       id UUID PRIMARY KEY,
@@ -102,19 +106,78 @@ function publicName(name) {
 function signToken(user) {
   return jwt.sign({ id: user.id, tipo: 'digitacao', role: 'student' }, JWT_SECRET, { expiresIn: '7d' });
 }
+async function ensureDigitacaoProfile(eadUserId) {
+  const accountResult = await db.query(
+    'SELECT id, nome, email, avatar_url, cidade, ranking_publico, deletado_em FROM ead_usuarios WHERE id = $1',
+    [eadUserId]
+  );
+  const account = accountResult.rows[0];
+  if (!account || account.deletado_em) throw new Error('conta indisponível');
+
+  let profileResult = await db.query(
+    'SELECT * FROM digitacao_usuarios WHERE ead_usuario_id = $1 OR LOWER(email) = LOWER($2) ORDER BY (ead_usuario_id = $1) DESC LIMIT 1',
+    [account.id, account.email]
+  );
+  let profile = profileResult.rows[0];
+  if (profile) {
+    profileResult = await db.query(
+      'UPDATE digitacao_usuarios SET ead_usuario_id = $2, nome = $3, email = $4, ' +
+      'avatar_url = COALESCE($5, avatar_url), cidade = COALESCE($6, cidade), ' +
+      'ranking_publico = COALESCE($7, ranking_publico), ultimo_acesso = NOW(), atualizado_em = NOW() ' +
+      'WHERE id = $1 RETURNING *',
+      [profile.id, account.id, account.nome, account.email, account.avatar_url, account.cidade, account.ranking_publico]
+    );
+    return profileResult.rows[0];
+  }
+
+  try {
+    profileResult = await db.query(
+      'INSERT INTO digitacao_usuarios (ead_usuario_id, nome, email, avatar_url, cidade, ranking_publico, ultimo_acesso) ' +
+      'VALUES ($1,$2,$3,$4,$5,COALESCE($6,TRUE),NOW()) RETURNING *',
+      [account.id, account.nome, account.email, account.avatar_url, account.cidade, account.ranking_publico]
+    );
+    return profileResult.rows[0];
+  } catch (error) {
+    if (error.code !== '23505') throw error;
+    profileResult = await db.query('SELECT * FROM digitacao_usuarios WHERE ead_usuario_id = $1 LIMIT 1', [account.id]);
+    if (!profileResult.rows.length) throw error;
+    return profileResult.rows[0];
+  }
+}
+
+function verifyStudentToken(token) {
+  const secrets = [EAD_JWT_SECRET, JWT_SECRET].filter((secret, index, list) => secret && list.indexOf(secret) === index);
+  let lastError = null;
+  for (const secret of secrets) {
+    try { return jwt.verify(token, secret); }
+    catch (error) { lastError = error; }
+  }
+  throw lastError || new Error('segredo ausente');
+}
+
 async function auth(req, res, next) {
-  if (!JWT_SECRET) return res.status(503).json({ error: 'Autenticação ainda não configurada no servidor.' });
+  if (!EAD_JWT_SECRET && !JWT_SECRET) return res.status(503).json({ error: 'Autenticação ainda não configurada no servidor.' });
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
   if (!token) return res.status(401).json({ error: 'Entre na sua conta para continuar.' });
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    if (payload.tipo !== 'digitacao') throw new Error('tipo inválido');
-    const { rows } = await db.query(
-      `SELECT id, nome, email, avatar_url, status, ranking_publico, criado_em
-       FROM digitacao_usuarios WHERE id = $1`, [payload.id]);
-    if (!rows.length || rows[0].status !== 'ativo') return res.status(401).json({ error: 'Conta indisponível.' });
-    req.digitacaoUser = rows[0];
+    const payload = verifyStudentToken(token);
+    let user = null;
+    if (payload.tipo === 'web' && payload.role === 'student') {
+      user = await ensureDigitacaoProfile(payload.id);
+    } else if (payload.tipo === 'digitacao' && payload.role === 'student') {
+      const { rows } = await db.query(
+        'SELECT id, nome, email, avatar_url, cidade, status, ranking_publico, criado_em, ead_usuario_id ' +
+        'FROM digitacao_usuarios WHERE id = $1',
+        [payload.id]
+      );
+      user = rows[0] || null;
+    } else {
+      throw new Error('tipo inválido');
+    }
+    if (!user || user.status !== 'ativo') return res.status(401).json({ error: 'Conta indisponível.' });
+    req.digitacaoUser = user;
+    req.accountToken = payload;
     next();
   } catch (error) {
     return res.status(401).json({ error: 'Sessão inválida ou expirada. Entre novamente.' });
@@ -124,6 +187,30 @@ function exerciseRule(moduleNumber, lessonNumber) {
   return curriculum.modules[String(moduleNumber)]?.[String(lessonNumber)] || null;
 }
 const globalExercise = (moduleNumber, lessonNumber) => (moduleNumber - 1) * 24 + lessonNumber;
+async function getCertificateContext(userId, queryable = db) {
+  const { rows } = await queryable.query(
+    'SELECT m.id AS matricula_id, cur.titulo AS curso, cur.carga_horaria ' +
+    'FROM digitacao_usuarios du ' +
+    'JOIN ead_matriculas m ON m.usuario_id = du.ead_usuario_id AND m.status = $2 ' +
+    'JOIN ead_cursos cur ON cur.id = m.curso_id AND cur.slug = $3 AND cur.ativo = TRUE ' +
+    'WHERE du.id = $1 LIMIT 1',
+    [userId, 'ativa', 'curso-digitacao-f5']
+  );
+  return rows[0] || null;
+}
+
+async function getCentralCertificate(userId, queryable = db) {
+  const { rows } = await queryable.query(
+    'SELECT cert.codigo, cur.titulo AS curso, cur.carga_horaria, cert.data_emissao AS emitido_em ' +
+    'FROM digitacao_usuarios du ' +
+    'JOIN ead_matriculas m ON m.usuario_id = du.ead_usuario_id ' +
+    'JOIN ead_cursos cur ON cur.id = m.curso_id AND cur.slug = $2 ' +
+    'JOIN ead_certificados cert ON cert.matricula_id = m.id ' +
+    'WHERE du.id = $1 LIMIT 1',
+    [userId, 'curso-digitacao-f5']
+  );
+  return rows[0] || null;
+}
 
 async function getProgress(userId, queryable = db) {
   const { rows } = await queryable.query(
@@ -151,12 +238,18 @@ async function getProgress(userId, queryable = db) {
     ? Math.round(rows.reduce((sum, row) => sum + row.melhor_precisao, 0) / rows.length) : 100;
   const nextGlobal = completed < TOTAL_EXERCISES ? completed + 1 : null;
   const next = nextGlobal ? { module: Math.ceil(nextGlobal / 24), exercise: ((nextGlobal - 1) % 24) + 1 } : null;
-  const certificates = await queryable.query(
-    `SELECT codigo, curso, carga_horaria, emitido_em FROM digitacao_certificados
-     WHERE usuario_id = $1 AND revogado_em IS NULL`, [userId]);
+  const certificate = await getCentralCertificate(userId, queryable);
+  const finalResult = approved.get(TOTAL_EXERCISES) || null;
   return {
     completed, total: TOTAL_EXERCISES, percent: Math.round(completed / TOTAL_EXERCISES * 100),
-    modules, next, bestPpm, averageAccuracy, certificate: certificates.rows[0] || null
+    modules, next, bestPpm, averageAccuracy, certificate,
+    finalEvaluation: finalResult ? {
+      passed: completed === TOTAL_EXERCISES,
+      accuracy: Number(finalResult.melhor_precisao),
+      ppm: Number(finalResult.melhor_ppm),
+      durationMs: Number(finalResult.melhor_duracao_ms),
+      approvedAt: finalResult.aprovado_em
+    } : { passed: false, accuracy: 0, ppm: 0, durationMs: 0, approvedAt: null }
   };
 }
 
@@ -373,32 +466,56 @@ function summarizeEvents(events) {
 }
 
 async function issueCertificate(userId, queryable = db) {
-  const existing = await queryable.query(
-    'SELECT codigo, curso, carga_horaria, emitido_em FROM digitacao_certificados WHERE usuario_id = $1 AND revogado_em IS NULL',
-    [userId]);
-  if (existing.rows.length) return existing.rows[0];
+  const existing = await getCentralCertificate(userId, queryable);
+  if (existing) return existing;
+
+  const context = await getCertificateContext(userId, queryable);
+  if (!context) return null;
+
+  const legacy = await queryable.query(
+    'SELECT codigo FROM digitacao_certificados WHERE usuario_id = $1 AND revogado_em IS NULL LIMIT 1',
+    [userId]
+  );
+  if (legacy.rows.length) {
+    try {
+      await queryable.query(
+        'INSERT INTO ead_certificados (matricula_id, codigo) VALUES ($1, $2) ' +
+        'ON CONFLICT (matricula_id) DO NOTHING',
+        [context.matricula_id, legacy.rows[0].codigo]
+      );
+      const migrated = await getCentralCertificate(userId, queryable);
+      if (migrated) return migrated;
+    } catch (error) {
+      if (error.code !== '23505') throw error;
+    }
+  }
+
   const progress = await getProgress(userId, queryable);
-  if (progress.completed !== TOTAL_EXERCISES) return null;
+  if (progress.completed !== TOTAL_EXERCISES || !progress.finalEvaluation.passed) return null;
+
   const year = new Date().getFullYear();
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const code = 'F5-DIG-' + year + '-' + crypto.randomBytes(5).toString('hex').toUpperCase();
     try {
       const { rows } = await queryable.query(
-        'INSERT INTO digitacao_certificados (usuario_id, codigo, curso, carga_horaria) ' +
-        'VALUES ($1,$2,$3,$4) RETURNING codigo, curso, carga_horaria, emitido_em',
-        [userId, code, curriculum.course.title, curriculum.course.hours || 20]);
-      return rows[0];
+        'INSERT INTO ead_certificados (matricula_id, codigo) VALUES ($1, $2) ' +
+        'RETURNING codigo, data_emissao AS emitido_em',
+        [context.matricula_id, code]
+      );
+      return {
+        codigo: rows[0].codigo,
+        curso: context.curso,
+        carga_horaria: context.carga_horaria,
+        emitido_em: rows[0].emitido_em
+      };
     } catch (error) {
       if (error.code !== '23505') throw error;
-      const found = await queryable.query(
-        'SELECT codigo, curso, carga_horaria, emitido_em FROM digitacao_certificados WHERE usuario_id = $1 AND revogado_em IS NULL',
-        [userId]);
-      if (found.rows.length) return found.rows[0];
+      const found = await getCentralCertificate(userId, queryable);
+      if (found) return found;
     }
   }
   throw new Error('Não foi possível emitir o certificado.');
 }
-
 router.post('/tentativas/:id/finalizar', attemptLimiter, auth, async (req, res, next) => {
   const client = await db.connect();
   try {
@@ -488,16 +605,44 @@ router.get('/certificado', auth, async (req, res, next) => {
 
 router.get('/certificados/validar/:codigo', async (req, res, next) => {
   try {
+    const code = String(req.params.codigo || '').trim();
     const { rows } = await db.query(
+      'SELECT cert.codigo, cert.data_emissao, cur.titulo AS curso, cur.carga_horaria, u.nome ' +
+      'FROM ead_certificados cert ' +
+      'JOIN ead_matriculas m ON m.id = cert.matricula_id ' +
+      'JOIN ead_cursos cur ON cur.id = m.curso_id AND cur.slug = $2 ' +
+      'JOIN ead_usuarios u ON u.id = m.usuario_id AND u.deletado_em IS NULL ' +
+      'WHERE UPPER(cert.codigo) = UPPER($1) LIMIT 1',
+      [code, 'curso-digitacao-f5']
+    );
+    if (rows.length) {
+      const item = rows[0];
+      return res.json({
+        valido: true,
+        aluno: item.nome,
+        curso: item.curso,
+        carga: item.carga_horaria + ' horas',
+        conclusao: item.data_emissao,
+        codigo: item.codigo
+      });
+    }
+
+    const legacy = await db.query(
       'SELECT c.codigo, c.curso, c.carga_horaria, c.emitido_em, u.nome ' +
       'FROM digitacao_certificados c JOIN digitacao_usuarios u ON u.id = c.usuario_id ' +
       'WHERE UPPER(c.codigo) = UPPER($1) AND c.revogado_em IS NULL AND u.status = $2',
-      [String(req.params.codigo || '').trim(), 'ativo']);
-    if (!rows.length) return res.status(404).json({ valido: false, error: 'Certificado não encontrado.' });
-    const item = rows[0];
-    res.json({ valido: true, aluno: item.nome, curso: item.curso, carga: item.carga_horaria + ' horas',
-      conclusao: item.emitido_em, codigo: item.codigo });
+      [code, 'ativo']
+    );
+    if (!legacy.rows.length) return res.status(404).json({ valido: false, error: 'Certificado não encontrado.' });
+    const item = legacy.rows[0];
+    res.json({
+      valido: true,
+      aluno: item.nome,
+      curso: item.curso,
+      carga: item.carga_horaria + ' horas',
+      conclusao: item.emitido_em,
+      codigo: item.codigo
+    });
   } catch (error) { next(error); }
 });
-
 module.exports = router;

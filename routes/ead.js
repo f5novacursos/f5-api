@@ -31,6 +31,8 @@ const cadastroLimiter = _makeRateLimiter(60 * 60 * 1000,  5, 'Muitos cadastros r
 const JWT_SECRET = process.env.EAD_JWT_SECRET || 'ead2026secret';
 if (!process.env.EAD_JWT_SECRET) console.warn('[EAD] AVISO: EAD_JWT_SECRET não definida — usando valor padrão inseguro!');
 const JWT_EXPIRY = '7d';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '163041222391-rmnha7n1jcni0nu19bflgvpq6f6ufm0j.apps.googleusercontent.com';
+const DIGITACAO_SLUG = 'curso-digitacao-f5';
 
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
@@ -183,6 +185,18 @@ async function initEadDatabase() {
   await db.query(`ALTER TABLE ead_aulas ADD COLUMN IF NOT EXISTS material_url TEXT`);
   await db.query(`ALTER TABLE ead_modulos ADD COLUMN IF NOT EXISTS descricao TEXT`);
   await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS deletado_em TIMESTAMP`);
+  // Conta F5 unificada: aluno gratuito pode entrar sem CPF/senha local (Google).
+  // Cadastros antigos permanecem intactos e continuam usando CPF quando disponível.
+  await db.query(`ALTER TABLE ead_usuarios ALTER COLUMN cpf DROP NOT NULL`);
+  await db.query(`ALTER TABLE ead_usuarios ALTER COLUMN senha_hash DROP NOT NULL`);
+  await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS google_sub VARCHAR(255)`);
+  await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS avatar_url TEXT`);
+  await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS cidade VARCHAR(160)`);
+  await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS ranking_publico BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS ead_usuarios_google_sub_unique ON ead_usuarios (google_sub) WHERE google_sub IS NOT NULL`);
+  await db.query(`ALTER TABLE ead_cursos ADD COLUMN IF NOT EXISTS slug VARCHAR(120)`);
+  await db.query(`ALTER TABLE ead_cursos ADD COLUMN IF NOT EXISTS tipo_conteudo VARCHAR(30) NOT NULL DEFAULT 'ead'`);
+  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS ead_cursos_slug_unique ON ead_cursos (slug) WHERE slug IS NOT NULL`);
   // venda_publica: chave por curso — DEFAULT false pra tudo que já existe (ninguém
   // vende pro público até o admin ligar curso por curso, conforme for terminando
   // a gravação). Aluno presencial elegível continua tendo acesso independente disso
@@ -193,12 +207,20 @@ async function initEadDatabase() {
   const { rows } = await db.query('SELECT COUNT(*) FROM ead_cursos');
   if (parseInt(rows[0].count) === 0) {
     await db.query(`
-      INSERT INTO ead_cursos (titulo, descricao, categoria, carga_horaria, preco, icone) VALUES 
+      INSERT INTO ead_cursos (titulo, descricao, categoria, carga_horaria, preco, icone) VALUES
       ('Informática Profissional + IA EAD', 'Domine o computador, o sistema operacional e as principais ferramentas de Inteligência Artificial para alavancar seu currículo.', 'Informática', 60, 149.90, '💻'),
       ('Excel Profissional + IA EAD', 'Aprenda planilhas, fórmulas complexas, gráficos avançados e relatórios integrados com IA.', 'Excel / Office', 40, 90.00, '📊')
     `);
     console.log('[EAD] Cursos iniciais semeados no banco.');
   }
+
+  await db.query(`
+    INSERT INTO ead_cursos
+      (titulo, descricao, categoria, carga_horaria, preco, icone, ativo, venda_publica, slug, tipo_conteudo)
+    VALUES
+      ('Curso de Digitação F5', 'Aprenda digitação profissional com teclado ABNT2, precisão, velocidade e situações reais de trabalho.', 'Digitação', 20, 0, '⌨️', TRUE, FALSE, $1, 'digitacao')
+    ON CONFLICT DO NOTHING
+  `, [DIGITACAO_SLUG]);
 }
 initEadDatabase().catch(err => console.error('[EAD] Erro na migração EAD:', err.message));
 
@@ -228,6 +250,63 @@ function eadAdminMiddleware(req, res, next) {
 }
 
 
+async function obterCursoDigitacao() {
+  const { rows } = await db.query(
+    `SELECT id, titulo, slug, tipo_conteudo FROM ead_cursos WHERE slug = $1 AND ativo = TRUE LIMIT 1`,
+    [DIGITACAO_SLUG]
+  );
+  if (!rows.length) throw new Error('Curso de Digitação não configurado.');
+  return rows[0];
+}
+
+async function garantirMatriculaDigitacao(tipo, usuarioId) {
+  const curso = await obterCursoDigitacao();
+  const campo = tipo === 'presencial' ? 'aluno_id' : 'usuario_id';
+  const conflito = tipo === 'presencial' ? '(aluno_id, curso_id)' : '(usuario_id, curso_id)';
+  await db.query(
+    `INSERT INTO ead_matriculas (${campo}, curso_id, status)
+     VALUES ($1, $2, 'ativa')
+     ON CONFLICT ${conflito} DO UPDATE SET status = 'ativa'`,
+    [usuarioId, curso.id]
+  );
+  return curso.id;
+}
+
+async function cursosAtivosDaConta(tipo, usuarioId) {
+  const campo = tipo === 'presencial' ? 'aluno_id' : 'usuario_id';
+  const { rows } = await db.query(
+    `SELECT curso_id FROM ead_matriculas WHERE ${campo} = $1 AND status = 'ativa' ORDER BY curso_id`,
+    [usuarioId]
+  );
+  return rows.map((row) => row.curso_id);
+}
+
+function assinarContaEad(usuario, tipo, cursos) {
+  return jwt.sign(
+    { id: usuario.id, nome: usuario.nome, cpf: usuario.cpf || null, tipo, role: 'student', cursos },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRY }
+  );
+}
+
+async function validarCredencialGoogle(credential) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000);
+  try {
+    const response = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`,
+      { signal: controller.signal }
+    );
+    const payload = await response.json();
+    const valido = response.ok && payload.aud === GOOGLE_CLIENT_ID
+      && String(payload.email_verified) === 'true' && payload.email && payload.sub;
+    if (!valido) throw new Error('Token Google inválido.');
+    return payload;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // ── ROTAS DE AUTENTICAÇÃO ─────────────────────────────────────────────
 
 // POST /api/ead/auth/login
@@ -254,7 +333,7 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
       }
 
       const aluno = alunos[0];
-      
+
       // Mapear cursos ead elegíveis com base na turma (ou curso) do presencial
       const cursosElegiveis = cursosEadElegiveis(aluno.turma_curso_nome, aluno.curso);
 
@@ -273,8 +352,8 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
       for (const eadCurso of eadCursos) {
         cursosLiberadosIds.push(eadCurso.id);
         await db.query(
-          `INSERT INTO ead_matriculas (aluno_id, curso_id, status) 
-           VALUES ($1, $2, 'ativa') 
+          `INSERT INTO ead_matriculas (aluno_id, curso_id, status)
+           VALUES ($1, $2, 'ativa')
            ON CONFLICT (aluno_id, curso_id) DO NOTHING`,
           [aluno.id, eadCurso.id]
         );
@@ -287,17 +366,17 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
         { expiresIn: JWT_EXPIRY }
       );
 
-      return res.json({ 
-        ok: true, 
-        token, 
-        usuario: { 
-          id: aluno.id, 
-          nome: aluno.nome, 
-          cpf: aluno.cpf, 
-          tipo: 'presencial', 
+      return res.json({
+        ok: true,
+        token,
+        usuario: {
+          id: aluno.id,
+          nome: aluno.nome,
+          cpf: aluno.cpf,
+          tipo: 'presencial',
           role: 'student',
           cursos: cursosLiberadosIds
-        } 
+        }
       });
     }
 
@@ -320,8 +399,11 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
     }
 
     const user = users[0];
-    const ok = bcrypt.compareSync(senha, user.senha_hash);
+    const ok = user.senha_hash ? bcrypt.compareSync(senha, user.senha_hash) : false;
     if (!ok) return res.status(401).json({ error: 'Usuário não encontrado ou senha inválida.' });
+
+    // O Curso de Digitação é gratuito e acompanha toda Conta F5.
+    await garantirMatriculaDigitacao('web', user.id);
 
     // Buscar as matrículas ativas do usuário web
     const { rows: mats } = await db.query(
@@ -344,6 +426,8 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
         nome: user.nome,
         cpf: user.cpf,
         email: user.email,
+        cidade: user.cidade || null,
+        avatar_url: user.avatar_url || null,
         tipo: 'web',
         role: 'student',
         cursos: cursosIds
@@ -351,6 +435,33 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
     });
 
   } catch(e) { next(e); }
+});
+
+// GET /api/ead/auth/me — renova a sessão e inclui matrículas criadas após o login.
+router.get('/auth/me', eadAuthMiddleware, async (req, res, next) => {
+  try {
+    if (req.user.tipo !== 'web') {
+      return res.json({ ok: true, token: req.headers.authorization.slice(7), usuario: req.user });
+    }
+    const { rows } = await db.query(
+      'SELECT id, nome, email, cpf, cidade, avatar_url FROM ead_usuarios WHERE id = $1 AND deletado_em IS NULL',
+      [req.user.id]
+    );
+    const user = rows[0];
+    if (!user) return res.status(401).json({ error: 'Conta indisponível.' });
+    await garantirMatriculaDigitacao('web', user.id);
+    const cursos = await cursosAtivosDaConta('web', user.id);
+    const token = assinarContaEad(user, 'web', cursos);
+    res.json({
+      ok: true,
+      token,
+      usuario: {
+        id: user.id, nome: user.nome, email: user.email, cpf: user.cpf || null,
+        cidade: user.cidade || null, avatar_url: user.avatar_url || null,
+        tipo: 'web', role: 'student', cursos
+      }
+    });
+  } catch (error) { next(error); }
 });
 
 // POST /api/ead/auth/admin-token — troca a sessão Google do ERP (adminAuth) por
@@ -381,8 +492,8 @@ router.post('/auth/cadastro', cadastroLimiter, async (req, res, next) => {
     const hash = bcrypt.hashSync(senha, 10);
 
     const { rows } = await db.query(
-      `INSERT INTO ead_usuarios (nome, email, senha_hash, cpf, telefone) 
-       VALUES ($1, $2, $3, $4, $5) 
+      `INSERT INTO ead_usuarios (nome, email, senha_hash, cpf, telefone)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id, nome, email, cpf, telefone`,
       [nome, email.toLowerCase().trim(), hash, cpfLimpo, telefone || null]
     );
@@ -484,7 +595,7 @@ router.get('/cursos', async (req, res, next) => {
   try {
     // Listar cursos EAD ativos
     const { rows: cursos } = await db.query('SELECT * FROM ead_cursos WHERE ativo = true ORDER BY id');
-    
+
     // Obter árvore de módulos e aulas
     for (const curso of cursos) {
       const { rows: modulos } = await db.query(
@@ -558,6 +669,9 @@ router.delete('/cursos/:id', eadAdminMiddleware, async (req, res, next) => {
     const { rows: c } = await db.query('SELECT * FROM ead_cursos WHERE id=$1', [id]);
     if (!c.length) return res.status(404).json({ error: 'Curso não encontrado.' });
     const curso = c[0];
+    if (curso.tipo_conteudo === 'digitacao' || curso.slug === 'curso-digitacao-f5') {
+      return res.status(409).json({ error: 'O Curso de Digitação F5 é integrado ao sistema e não pode ser excluído.' });
+    }
     const { rows: modulos } = await db.query('SELECT * FROM ead_modulos WHERE curso_id=$1', [id]);
     const { rows: aulas } = modulos.length
       ? await db.query('SELECT * FROM ead_aulas WHERE modulo_id = ANY($1)', [modulos.map(m => m.id)])
@@ -699,9 +813,9 @@ router.get('/video/:aulaId', eadAuthMiddleware, async (req, res, next) => {
 
     // Buscar detalhes da aula e o curso_id correspondente
     const { rows: aulas } = await db.query(
-      `SELECT a.*, m.curso_id 
-       FROM ead_aulas a 
-       JOIN ead_modulos m ON a.modulo_id = m.id 
+      `SELECT a.*, m.curso_id
+       FROM ead_aulas a
+       JOIN ead_modulos m ON a.modulo_id = m.id
        WHERE a.id = $1`,
       [aulaId]
     );
@@ -712,7 +826,7 @@ router.get('/video/:aulaId', eadAuthMiddleware, async (req, res, next) => {
     // Se for aula grátis (degustação), permite sem matrícula ativa
     if (!aula.gratis) {
       let matriculado = false;
-      
+
       if (req.user.role === 'admin') {
         matriculado = true;
       } else if (req.user.tipo === 'presencial') {
@@ -997,7 +1111,7 @@ router.post('/progresso', eadAuthMiddleware, async (req, res, next) => {
         const { rows: contagem } = await db.query('SELECT COUNT(*) FROM ead_certificados');
         const sequencia = String(parseInt(contagem[0].count) + 1).padStart(4, '0');
         const codigo = `F5-EAD-${new Date().getFullYear()}-${sequencia}`;
-        
+
         const { rows: novoCert } = await db.query(
           'INSERT INTO ead_certificados (matricula_id, codigo) VALUES ($1, $2) RETURNING *',
           [matriculaId, codigo]
@@ -1029,7 +1143,7 @@ router.get('/certificados', eadAuthMiddleware, async (req, res, next) => {
 
     const matsIds = mats.map(m => m.id);
     const { rows: certs } = await db.query(
-      `SELECT c.*, cur.titulo AS curso_titulo, cur.carga_horaria 
+      `SELECT c.*, cur.titulo AS curso_titulo, cur.carga_horaria
        FROM ead_certificados c
        JOIN ead_matriculas m ON c.matricula_id = m.id
        JOIN ead_cursos cur ON m.curso_id = cur.id

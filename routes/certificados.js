@@ -110,11 +110,34 @@ router.get("/validar", async (req, res) => {
     `, [codigo]);
 
     if (result.rows.length === 0) {
-      const digitacao = await pool.query(
-        "SELECT c.codigo, c.curso, c.carga_horaria, c.emitido_em, u.nome " +
-        "FROM digitacao_certificados c JOIN digitacao_usuarios u ON u.id = c.usuario_id " +
-        "WHERE UPPER(c.codigo) = UPPER($1) AND c.revogado_em IS NULL AND u.status = 'ativo'",
+      const ead = await pool.query(
+        'SELECT cert.codigo, cert.data_emissao, cur.titulo AS curso, cur.carga_horaria, ' +
+        'COALESCE(u.nome, a.nome) AS nome ' +
+        'FROM ead_certificados cert ' +
+        'JOIN ead_matriculas m ON m.id = cert.matricula_id ' +
+        'JOIN ead_cursos cur ON cur.id = m.curso_id ' +
+        'LEFT JOIN ead_usuarios u ON u.id = m.usuario_id ' +
+        'LEFT JOIN alunos a ON a.id = m.aluno_id ' +
+        'WHERE UPPER(cert.codigo) = UPPER($1) LIMIT 1',
         [codigo]
+      );
+      if (ead.rows.length) {
+        const c = ead.rows[0];
+        return res.json({
+          valido: true,
+          aluno: c.nome,
+          curso: c.curso,
+          carga: c.carga_horaria + ' horas',
+          conclusao: new Date(c.data_emissao).toLocaleDateString('pt-BR'),
+          codigo: c.codigo
+        });
+      }
+
+      const digitacao = await pool.query(
+        'SELECT c.codigo, c.curso, c.carga_horaria, c.emitido_em, u.nome ' +
+        'FROM digitacao_certificados c JOIN digitacao_usuarios u ON u.id = c.usuario_id ' +
+        'WHERE UPPER(c.codigo) = UPPER($1) AND c.revogado_em IS NULL AND u.status = $2',
+        [codigo, 'ativo']
       );
       if (digitacao.rows.length === 0) return res.status(404).json({ valido: false });
       const d = digitacao.rows[0];
@@ -122,12 +145,11 @@ router.get("/validar", async (req, res) => {
         valido: true,
         aluno: d.nome,
         curso: d.curso,
-        carga: d.carga_horaria + " horas",
-        conclusao: new Date(d.emitido_em).toLocaleDateString("pt-BR"),
+        carga: d.carga_horaria + ' horas',
+        conclusao: new Date(d.emitido_em).toLocaleDateString('pt-BR'),
         codigo: d.codigo
       });
     }
-
     const r = result.rows[0];
     const fmtData = (d) => {
       if (!d) return "";
