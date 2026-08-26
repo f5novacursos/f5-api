@@ -9,6 +9,7 @@ const JWT_SECRET = process.env.EAD_JWT_SECRET || '';
 const JWT_EXPIRY = '7d';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '163041222391-rmnha7n1jcni0nu19bflgvpq6f6ufm0j.apps.googleusercontent.com';
 const DIGITACAO_SLUG = 'curso-digitacao-f5';
+const DIGITACAO_KIDS_SLUG = 'curso-digitacao-f5-kids';
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -20,13 +21,20 @@ const authLimiter = rateLimit({
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const validEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-async function ensureTypingEnrollment(usuarioId) {
-  const { rows } = await db.query(
+const normalizeLoginName = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .toLowerCase();
+
+async function ensureTypingEnrollment(usuarioId, slug = DIGITACAO_SLUG, queryable = db) {
+  const { rows } = await queryable.query(
     'SELECT id FROM ead_cursos WHERE slug = $1 AND ativo = TRUE LIMIT 1',
-    [DIGITACAO_SLUG]
+    [slug]
   );
   if (!rows.length) throw new Error('Curso de Digitação não configurado no EAD.');
-  await db.query(
+  await queryable.query(
     "INSERT INTO ead_matriculas (usuario_id, curso_id, status) VALUES ($1, $2, 'ativa') " +
     "ON CONFLICT (usuario_id, curso_id) DO UPDATE SET status = 'ativa'",
     [usuarioId, rows[0].id]
@@ -50,7 +58,8 @@ function signToken(user, courses) {
     cpf: user.cpf || null,
     tipo: 'web',
     role: 'student',
-    cursos: courses
+    cursos: courses,
+    perfil: user.perfil || 'adulto'
   }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
 }
 
@@ -62,8 +71,10 @@ function publicUser(user, courses) {
     cpf: user.cpf || null,
     avatar_url: user.avatar_url || null,
     cidade: user.cidade || null,
+    usuario: user.nome_login || null,
     tipo: 'web',
     role: 'student',
+    perfil: user.perfil || 'adulto',
     cursos: courses
   };
 }
@@ -118,6 +129,58 @@ router.post('/cadastro', authLimiter, async (req, res, next) => {
   } catch (error) {
     if (error.code === '23505') return res.status(409).json({ error: 'Este e-mail já possui uma Conta F5.' });
     next(error);
+  }
+});
+
+router.post('/kids/cadastro', authLimiter, async (req, res, next) => {
+  let client;
+  try {
+    if (!JWT_SECRET) return res.status(503).json({ error: 'Cadastro ainda não configurado no servidor.' });
+    const nome = String(req.body.nome || '').trim().replace(/\s+/g, ' ');
+    const nomeLogin = normalizeLoginName(nome);
+    const senha = String(req.body.senha || '');
+    const cidade = String(req.body.cidade || '').trim().replace(/\s+/g, ' ');
+
+    if (nome.length < 2 || nome.length > 40 || !/^[\p{L}\p{N} _.-]+$/u.test(nome)) {
+      return res.status(400).json({ error: 'Use um nome ou apelido de 2 a 40 caracteres.' });
+    }
+    if (senha.length < 6 || senha.length > 100) {
+      return res.status(400).json({ error: 'A senha precisa ter pelo menos 6 caracteres.' });
+    }
+    if (cidade.length < 2 || cidade.length > 160) {
+      return res.status(400).json({ error: 'Informe sua cidade.' });
+    }
+
+    client = await db.connect();
+    await client.query('BEGIN');
+    const existing = await client.query(
+      'SELECT id FROM ead_usuarios WHERE LOWER(nome_login) = $1 AND deletado_em IS NULL LIMIT 1',
+      [nomeLogin]
+    );
+    if (existing.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Esse nome já existe. Escolha outro.' });
+    }
+
+    const hash = await bcrypt.hash(senha, 12);
+    const { rows } = await client.query(
+      `INSERT INTO ead_usuarios
+        (nome, nome_login, email, senha_hash, cpf, cidade, perfil, ranking_publico)
+       VALUES ($1, $2, NULL, $3, NULL, $4, 'kids', FALSE)
+       RETURNING id, nome, nome_login, email, cpf, avatar_url, cidade, perfil`,
+      [nome, nomeLogin, hash, cidade]
+    );
+    const user = rows[0];
+    await ensureTypingEnrollment(user.id, DIGITACAO_KIDS_SLUG, client);
+    await client.query('COMMIT');
+    const courses = await cursosAtivos(user.id);
+    res.status(201).json({ token: signToken(user, courses), usuario: publicUser(user, courses) });
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    if (error.code === '23505') return res.status(409).json({ error: 'Esse nome já existe. Escolha outro.' });
+    next(error);
+  } finally {
+    if (client) client.release();
   }
 });
 

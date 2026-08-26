@@ -33,6 +33,7 @@ if (!process.env.EAD_JWT_SECRET) console.warn('[EAD] AVISO: EAD_JWT_SECRET não 
 const JWT_EXPIRY = '7d';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '163041222391-rmnha7n1jcni0nu19bflgvpq6f6ufm0j.apps.googleusercontent.com';
 const DIGITACAO_SLUG = 'curso-digitacao-f5';
+const DIGITACAO_KIDS_SLUG = 'curso-digitacao-f5-kids';
 
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
@@ -51,6 +52,15 @@ function criarTransporter() {
 // Normaliza texto: remove acento e baixa caixa (p/ casar nomes de turma/curso)
 function _norm(s) {
   return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+function normalizarNomeLogin(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
 }
 
 // Dado o nome da turma/curso presencial, retorna os TÍTULOS de cursos EAD elegíveis.
@@ -189,11 +199,15 @@ async function initEadDatabase() {
   // Cadastros antigos permanecem intactos e continuam usando CPF quando disponível.
   await db.query(`ALTER TABLE ead_usuarios ALTER COLUMN cpf DROP NOT NULL`);
   await db.query(`ALTER TABLE ead_usuarios ALTER COLUMN senha_hash DROP NOT NULL`);
+  await db.query(`ALTER TABLE ead_usuarios ALTER COLUMN email DROP NOT NULL`);
   await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS google_sub VARCHAR(255)`);
   await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS avatar_url TEXT`);
   await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS cidade VARCHAR(160)`);
+  await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS nome_login VARCHAR(80)`);
+  await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS perfil VARCHAR(20) NOT NULL DEFAULT 'adulto'`);
   await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS ranking_publico BOOLEAN NOT NULL DEFAULT TRUE`);
   await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS ead_usuarios_google_sub_unique ON ead_usuarios (google_sub) WHERE google_sub IS NOT NULL`);
+  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS ead_usuarios_nome_login_unique ON ead_usuarios (LOWER(nome_login)) WHERE nome_login IS NOT NULL AND deletado_em IS NULL`);
   await db.query(`ALTER TABLE ead_cursos ADD COLUMN IF NOT EXISTS slug VARCHAR(120)`);
   await db.query(`ALTER TABLE ead_cursos ADD COLUMN IF NOT EXISTS tipo_conteudo VARCHAR(30) NOT NULL DEFAULT 'ead'`);
   await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS ead_cursos_slug_unique ON ead_cursos (slug) WHERE slug IS NOT NULL`);
@@ -221,6 +235,13 @@ async function initEadDatabase() {
       ('Curso de Digitação F5', 'Aprenda digitação profissional com teclado ABNT2, precisão, velocidade e situações reais de trabalho.', 'Digitação', 20, 0, '⌨️', TRUE, FALSE, $1, 'digitacao')
     ON CONFLICT DO NOTHING
   `, [DIGITACAO_SLUG]);
+  await db.query(`
+    INSERT INTO ead_cursos
+      (titulo, descricao, categoria, carga_horaria, preco, icone, ativo, venda_publica, slug, tipo_conteudo)
+    VALUES
+      ('Digitação F5 Kids', 'Aprenda letras, palavras e o teclado brasileiro com atividades e jogos feitos para crianças e pré-adolescentes.', 'Digitação', 15, 0, '🌟', TRUE, FALSE, $1, 'digitacao-kids')
+    ON CONFLICT DO NOTHING
+  `, [DIGITACAO_KIDS_SLUG]);
 }
 initEadDatabase().catch(err => console.error('[EAD] Erro na migração EAD:', err.message));
 
@@ -250,17 +271,18 @@ function eadAdminMiddleware(req, res, next) {
 }
 
 
-async function obterCursoDigitacao() {
+async function obterCursoDigitacao(slug = DIGITACAO_SLUG) {
   const { rows } = await db.query(
     `SELECT id, titulo, slug, tipo_conteudo FROM ead_cursos WHERE slug = $1 AND ativo = TRUE LIMIT 1`,
-    [DIGITACAO_SLUG]
+    [slug]
   );
   if (!rows.length) throw new Error('Curso de Digitação não configurado.');
   return rows[0];
 }
 
-async function garantirMatriculaDigitacao(tipo, usuarioId) {
-  const curso = await obterCursoDigitacao();
+async function garantirMatriculaDigitacao(tipo, usuarioId, perfil = 'adulto') {
+  const slug = perfil === 'kids' ? DIGITACAO_KIDS_SLUG : DIGITACAO_SLUG;
+  const curso = await obterCursoDigitacao(slug);
   const campo = tipo === 'presencial' ? 'aluno_id' : 'usuario_id';
   const conflito = tipo === 'presencial' ? '(aluno_id, curso_id)' : '(usuario_id, curso_id)';
   await db.query(
@@ -283,7 +305,7 @@ async function cursosAtivosDaConta(tipo, usuarioId) {
 
 function assinarContaEad(usuario, tipo, cursos) {
   return jwt.sign(
-    { id: usuario.id, nome: usuario.nome, cpf: usuario.cpf || null, tipo, role: 'student', cursos },
+    { id: usuario.id, nome: usuario.nome, cpf: usuario.cpf || null, tipo, role: 'student', cursos, perfil: usuario.perfil || 'adulto' },
     JWT_SECRET,
     { expiresIn: JWT_EXPIRY }
   );
@@ -312,10 +334,10 @@ async function validarCredencialGoogle(credential) {
 // POST /api/ead/auth/login
 router.post('/auth/login', loginLimiter, async (req, res, next) => {
   try {
-    const { cpf, email, senha } = req.body;
+    const { cpf, email, usuario, senha } = req.body;
 
     // Fluxo Aluno Acadêmico (Presencial) via CPF
-    if (cpf && !senha && !email) {
+    if (cpf && !senha && !email && !usuario) {
       const cpfLimpo = cpf.replace(/\D/g, '');
       if (cpfLimpo.length < 11) return res.status(400).json({ error: 'CPF inválido.' });
 
@@ -381,17 +403,21 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
     }
 
     // Fluxo Aluno Público (Web / Venda) via E-mail ou CPF + Senha
-    const idRaw = (email || cpf || '').trim();
+    const idRaw = (email || usuario || cpf || '').trim();
     if (!idRaw || !senha) {
-      return res.status(400).json({ error: 'Preencha CPF/E-mail e Senha.' });
+      return res.status(400).json({ error: 'Preencha CPF, e-mail ou nome e senha.' });
     }
     const idEmail = idRaw.toLowerCase();        // casa por e-mail (mesmo com dígitos)
+    const idNome = normalizarNomeLogin(idRaw);  // casa por nome Kids sem diferenciar acentos
     const idDigits = idRaw.replace(/\D/g, '');  // casa por CPF (só os números)
 
     const { rows: users } = await db.query(
       `SELECT * FROM ead_usuarios
-       WHERE LOWER(email) = $1 OR ($2 <> '' AND REPLACE(REPLACE(cpf, '.', ''), '-', '') = $2)`,
-      [idEmail, idDigits]
+       WHERE deletado_em IS NULL AND (
+         LOWER(email) = $1 OR LOWER(nome_login) = $3 OR
+         ($2 <> '' AND REPLACE(REPLACE(cpf, '.', ''), '-', '') = $2)
+       )`,
+      [idEmail, idDigits, idNome]
     );
 
     if (!users.length) {
@@ -403,7 +429,7 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
     if (!ok) return res.status(401).json({ error: 'Usuário não encontrado ou senha inválida.' });
 
     // O Curso de Digitação é gratuito e acompanha toda Conta F5.
-    await garantirMatriculaDigitacao('web', user.id);
+    await garantirMatriculaDigitacao('web', user.id, user.perfil);
 
     // Buscar as matrículas ativas do usuário web
     const { rows: mats } = await db.query(
@@ -413,7 +439,7 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
     const cursosIds = mats.map(m => m.curso_id);
 
     const token = jwt.sign(
-      { id: user.id, nome: user.nome, cpf: user.cpf, tipo: 'web', role: 'student', cursos: cursosIds },
+      { id: user.id, nome: user.nome, cpf: user.cpf, tipo: 'web', role: 'student', cursos: cursosIds, perfil: user.perfil || 'adulto' },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRY }
     );
@@ -426,10 +452,12 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
         nome: user.nome,
         cpf: user.cpf,
         email: user.email,
+        usuario: user.nome_login || null,
         cidade: user.cidade || null,
         avatar_url: user.avatar_url || null,
         tipo: 'web',
         role: 'student',
+        perfil: user.perfil || 'adulto',
         cursos: cursosIds
       }
     });
@@ -444,12 +472,12 @@ router.get('/auth/me', eadAuthMiddleware, async (req, res, next) => {
       return res.json({ ok: true, token: req.headers.authorization.slice(7), usuario: req.user });
     }
     const { rows } = await db.query(
-      'SELECT id, nome, email, cpf, cidade, avatar_url FROM ead_usuarios WHERE id = $1 AND deletado_em IS NULL',
+      'SELECT id, nome, email, cpf, cidade, avatar_url, nome_login, perfil FROM ead_usuarios WHERE id = $1 AND deletado_em IS NULL',
       [req.user.id]
     );
     const user = rows[0];
     if (!user) return res.status(401).json({ error: 'Conta indisponível.' });
-    await garantirMatriculaDigitacao('web', user.id);
+    await garantirMatriculaDigitacao('web', user.id, user.perfil);
     const cursos = await cursosAtivosDaConta('web', user.id);
     const token = assinarContaEad(user, 'web', cursos);
     res.json({
@@ -457,6 +485,7 @@ router.get('/auth/me', eadAuthMiddleware, async (req, res, next) => {
       token,
       usuario: {
         id: user.id, nome: user.nome, email: user.email, cpf: user.cpf || null,
+        usuario: user.nome_login || null, perfil: user.perfil || 'adulto',
         cidade: user.cidade || null, avatar_url: user.avatar_url || null,
         tipo: 'web', role: 'student', cursos
       }
@@ -669,7 +698,8 @@ router.delete('/cursos/:id', eadAdminMiddleware, async (req, res, next) => {
     const { rows: c } = await db.query('SELECT * FROM ead_cursos WHERE id=$1', [id]);
     if (!c.length) return res.status(404).json({ error: 'Curso não encontrado.' });
     const curso = c[0];
-    if (curso.tipo_conteudo === 'digitacao' || curso.slug === 'curso-digitacao-f5') {
+    if (curso.tipo_conteudo === 'digitacao' || curso.tipo_conteudo === 'digitacao-kids'
+        || curso.slug === DIGITACAO_SLUG || curso.slug === DIGITACAO_KIDS_SLUG) {
       return res.status(409).json({ error: 'O Curso de Digitação F5 é integrado ao sistema e não pode ser excluído.' });
     }
     const { rows: modulos } = await db.query('SELECT * FROM ead_modulos WHERE curso_id=$1', [id]);
@@ -1462,7 +1492,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
 
     // 1) Usuários web (vendas online) + suas matrículas ativas
     const { rows: webs } = await db.query(
-      'SELECT id, nome, email, cpf, telefone, criado_em FROM ead_usuarios WHERE deletado_em IS NULL ORDER BY nome'
+      'SELECT id, nome, nome_login, email, cpf, telefone, cidade, perfil, criado_em FROM ead_usuarios WHERE deletado_em IS NULL ORDER BY nome'
     );
     for (const u of webs) {
       const { rows: mats } = await db.query(
@@ -1470,8 +1500,8 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
         [u.id]
       );
       lista.push({
-        id: u.id, nome: u.nome, email: u.email, cpf: u.cpf,
-        telefone: u.telefone, criado_em: u.criado_em, tipo: 'web',
+        id: u.id, nome: u.nome, usuario: u.nome_login, email: u.email, cpf: u.cpf,
+        telefone: u.telefone, cidade: u.cidade, perfil: u.perfil || 'adulto', criado_em: u.criado_em, tipo: 'web',
         cursos: mats.map(m => m.curso_id),
       });
     }
@@ -1504,6 +1534,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
       const sNum = s.replace(/\D/g, '');
       result = lista.filter(x =>
         (x.nome || '').toLowerCase().includes(s) ||
+        (x.usuario || '').toLowerCase().includes(s) ||
         (x.email || '').toLowerCase().includes(s) ||
         (sNum && (x.cpf || '').replace(/\D/g, '').includes(sNum))
       );
