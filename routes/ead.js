@@ -359,20 +359,19 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
       // Mapear cursos ead elegíveis com base na turma (ou curso) do presencial
       const cursosElegiveis = cursosEadElegiveis(aluno.turma_curso_nome, aluno.curso);
 
-      if (cursosElegiveis.length === 0) {
-        return res.status(403).json({ error: 'Seu curso presencial não possui um equivalente no EAD liberado.' });
-      }
-
       // Buscar os IDs correspondentes na tabela ead_cursos
-      const { rows: eadCursos } = await db.query(
-        'SELECT id, titulo FROM ead_cursos WHERE titulo = ANY($1)',
-        [cursosElegiveis]
-      );
+      const eadCursos = cursosElegiveis.length
+        ? (await db.query('SELECT id, titulo FROM ead_cursos WHERE titulo = ANY($1)', [cursosElegiveis])).rows
+        : [];
 
-      // Inserir matrículas ativas para o aluno presencial
-      const cursosLiberadosIds = [];
+      // Todo aluno presencial ativo ou formado recebe Digitação Profissional,
+      // independentemente de a turma possuir outro equivalente no EAD.
+      const digitacaoId = await garantirMatriculaDigitacao('presencial', aluno.id, 'adulto');
+      const cursosLiberadosIds = [digitacaoId];
+
+      // Inserir também as matrículas equivalentes à turma, quando existirem.
       for (const eadCurso of eadCursos) {
-        cursosLiberadosIds.push(eadCurso.id);
+        if (!cursosLiberadosIds.includes(eadCurso.id)) cursosLiberadosIds.push(eadCurso.id);
         await db.query(
           `INSERT INTO ead_matriculas (aluno_id, curso_id, status)
            VALUES ($1, $2, 'ativa')
