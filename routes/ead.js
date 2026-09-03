@@ -1576,6 +1576,19 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
 
     const lista = [];
 
+    // Contagem de dúvidas/mensagens não lidas de suporte por aluno
+    const { rows: supWeb } = await db.query(
+      "SELECT usuario_id, COUNT(*) AS total FROM ead_suporte_mensagens WHERE remetente = 'aluno' AND lida_pelo_admin = FALSE AND usuario_id IS NOT NULL GROUP BY usuario_id"
+    );
+    const supWebMap = {};
+    supWeb.forEach(s => { supWebMap[s.usuario_id] = parseInt(s.total || 0); });
+
+    const { rows: supPres } = await db.query(
+      "SELECT aluno_id, COUNT(*) AS total FROM ead_suporte_mensagens WHERE remetente = 'aluno' AND lida_pelo_admin = FALSE AND aluno_id IS NOT NULL GROUP BY aluno_id"
+    );
+    const supPresMap = {};
+    supPres.forEach(s => { supPresMap[s.aluno_id] = parseInt(s.total || 0); });
+
     // 1) Usuários web (vendas online) + suas matrículas ativas
     const { rows: webs } = await db.query(
       'SELECT id, nome, nome_login, email, cpf, telefone, cidade, perfil, criado_em FROM ead_usuarios WHERE deletado_em IS NULL ORDER BY nome'
@@ -1589,6 +1602,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
         id: u.id, nome: u.nome, usuario: u.nome_login, email: u.email, cpf: u.cpf,
         telefone: u.telefone, cidade: u.cidade, perfil: u.perfil || 'adulto', criado_em: u.criado_em, tipo: 'web',
         cursos: mats.map(m => m.curso_id),
+        suporte_nao_lidas: supWebMap[u.id] || 0,
       });
     }
 
@@ -1610,6 +1624,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
         telefone: a.telefone, criado_em: a.criado_em, tipo: 'presencial',
         turma: a.turma_nome || null,
         cursos: cursosIds,
+        suporte_nao_lidas: supPresMap[a.id] || 0,
       });
     }
 
