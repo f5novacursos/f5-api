@@ -1172,6 +1172,75 @@ router.post('/progresso', eadAuthMiddleware, async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
+// POST /api/ead/progresso/kids
+router.post('/progresso/kids', eadAuthMiddleware, async (req, res, next) => {
+  try {
+    const { modulo, exercicio, passed, stars, ppm, accuracy } = req.body;
+    if (!modulo || !exercicio) return res.status(400).json({ error: 'modulo e exercicio obrigatórios' });
+
+    let matQuery = '';
+    const params = [req.user.id];
+    if (req.user.tipo === 'presencial') {
+      matQuery = "SELECT m.id, m.curso_id FROM ead_matriculas m JOIN ead_cursos c ON m.curso_id = c.id WHERE m.aluno_id = $1 AND (c.slug = 'curso-digitacao-f5-kids' OR c.tipo_conteudo = 'digitacao-kids') AND m.status = 'ativa' LIMIT 1";
+    } else {
+      matQuery = "SELECT m.id, m.curso_id FROM ead_matriculas m JOIN ead_cursos c ON m.curso_id = c.id WHERE m.usuario_id = $1 AND (c.slug = 'curso-digitacao-f5-kids' OR c.tipo_conteudo = 'digitacao-kids') AND m.status = 'ativa' LIMIT 1";
+    }
+
+    let { rows: mats } = await db.query(matQuery, params);
+    if (!mats.length && req.user.tipo === 'web') {
+      const { rows: anyMat } = await db.query(
+        "SELECT id, curso_id FROM ead_matriculas WHERE usuario_id = $1 AND status = 'ativa' ORDER BY id ASC LIMIT 1",
+        [req.user.id]
+      );
+      mats = anyMat;
+    }
+
+    if (mats.length && passed) {
+      const matriculaId = mats[0].id;
+      const aulaKey = ((Number(modulo) - 1) * 12) + Number(exercicio);
+      await db.query(
+        `INSERT INTO ead_progresso (matricula_id, aula_id, data_conclusao)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (matricula_id, aula_id) DO UPDATE SET data_conclusao = NOW()`,
+        [matriculaId, aulaKey]
+      );
+    }
+
+    // Se o usuário for web, registra também em digitacao_resultados
+    if (passed && req.user.tipo === 'web') {
+      try {
+        let { rows: du } = await db.query(
+          "SELECT id FROM digitacao_usuarios WHERE ead_usuario_id = $1 OR id = $1 LIMIT 1",
+          [req.user.id]
+        );
+        let digUserId = du[0]?.id;
+        if (!digUserId) {
+          const { rows: newDu } = await db.query(
+            "INSERT INTO digitacao_usuarios (nome, email, ead_usuario_id, status) VALUES ($1, $2, $3, 'ativo') RETURNING id",
+            [req.user.nome, req.user.email || `${req.user.nome_login || req.user.id}@kids.f5`, req.user.id]
+          );
+          digUserId = newDu[0]?.id;
+        }
+        if (digUserId) {
+          await db.query(
+            `INSERT INTO digitacao_resultados (usuario_id, modulo, exercicio, melhor_precisao, melhor_ppm, melhor_duracao_ms, aprovado_em, atualizado_em)
+             VALUES ($1, $2, $3, $4, $5, 10000, NOW(), NOW())
+             ON CONFLICT (usuario_id, modulo, exercicio) DO UPDATE SET
+               melhor_precisao = GREATEST(digitacao_resultados.melhor_precisao, EXCLUDED.melhor_precisao),
+               melhor_ppm = GREATEST(digitacao_resultados.melhor_ppm, EXCLUDED.melhor_ppm),
+               atualizado_em = NOW()`,
+            [digUserId, Number(modulo), Number(exercicio), Number(accuracy) || 100, Number(ppm) || 0]
+          );
+        }
+      } catch (err) {
+        console.warn('Falha ao espelhar resultado kids:', err.message);
+      }
+    }
+
+    res.json({ ok: true });
+  } catch(e) { next(e); }
+});
+
 // GET /api/ead/certificados
 router.get('/certificados', eadAuthMiddleware, async (req, res, next) => {
   try {
@@ -1739,34 +1808,57 @@ router.get('/admin/alunos/:tipo/:id/perfil', eadAdminMiddleware, async (req, res
       );
       const totalAulas = parseInt(totalAulasRows[0]?.total || 0);
 
-      // Aulas concluídas
+      // Aulas concluídas no ead_progresso
       const { rows: concluidasRows } = await db.query(
         `SELECT COUNT(p.id) AS concluidas, MAX(p.data_conclusao) AS ultima_atividade
          FROM ead_progresso p
          WHERE p.matricula_id = $1`,
         [mat.matricula_id]
       );
-      const concluidas = parseInt(concluidasRows[0]?.concluidas || 0);
-      const ultimaAtividade = concluidasRows[0]?.ultima_atividade || null;
+      let concluidas = parseInt(concluidasRows[0]?.concluidas || 0);
+      let ultimaAtividade = concluidasRows[0]?.ultima_atividade || null;
 
-      // Calcular %
-      const isDigitacao = mat.tipo_conteudo === 'digitacao' || mat.tipo_conteudo === 'digitacao-kids';
-      let progressoPct = totalAulas > 0 ? Math.min(100, Math.round((concluidas / totalAulas) * 100)) : 0;
-      if (isDigitacao && totalAulas === 0) {
-        // Fallback para digitação se não tiver módulos estáticos
-        progressoPct = concluidas > 0 ? Math.min(100, concluidas) : 0;
+      // Se for curso de digitação (adulto ou kids), buscar também em digitacao_resultados
+      const isKids = mat.tipo_conteudo === 'digitacao-kids' || (mat.slug && mat.slug.includes('kids'));
+      const isDigitacao = isKids || mat.tipo_conteudo === 'digitacao' || (mat.slug && mat.slug.includes('digitacao'));
+
+      if (isDigitacao) {
+        try {
+          const { rows: digRows } = await db.query(
+            `SELECT COUNT(r.id) AS total_aprovados, MAX(r.atualizado_em) AS ultima_atividade_dig
+             FROM digitacao_resultados r
+             JOIN digitacao_usuarios du ON r.usuario_id = du.id
+             WHERE du.ead_usuario_id = $1
+                OR du.id = $1
+                OR (du.email IS NOT NULL AND $2::text IS NOT NULL AND LOWER(du.email) = LOWER($2::text))
+                OR (du.nome IS NOT NULL AND $3::text IS NOT NULL AND LOWER(du.nome) = LOWER($3::text))`,
+            [numId, aluno.email || null, aluno.nome || null]
+          );
+          const totalDig = parseInt(digRows[0]?.total_aprovados || 0);
+          const dataDig = digRows[0]?.ultima_atividade_dig || null;
+          
+          if (totalDig > concluidas) {
+            concluidas = totalDig;
+          }
+          if (dataDig && (!ultimaAtividade || new Date(dataDig) > new Date(ultimaAtividade))) {
+            ultimaAtividade = dataDig;
+          }
+        } catch (_) {}
       }
+
+      const totalDoCurso = isKids ? 36 : (isDigitacao ? 72 : (totalAulas > 0 ? totalAulas : 1));
+      let progressoPct = Math.min(100, Math.round((concluidas / totalDoCurso) * 100));
 
       cursosComProgresso.push({
         matricula_id: mat.matricula_id,
         curso_id: mat.curso_id,
         titulo: mat.titulo,
-        icone: mat.icone || '📚',
+        icone: mat.icone || (isKids ? '🌟' : (isDigitacao ? '⌨️' : '📚')),
         carga_horaria: mat.carga_horaria,
         tipo_conteudo: mat.tipo_conteudo,
         slug: mat.slug,
         data_matricula: mat.data_matricula,
-        total_aulas: isDigitacao && totalAulas === 0 ? 72 : totalAulas,
+        total_aulas: totalDoCurso,
         aulas_concluidas: concluidas,
         progresso_pct: progressoPct,
         ultima_atividade: ultimaAtividade,
