@@ -242,6 +242,24 @@ async function initEadDatabase() {
       ('Digitação F5 Kids', 'Aprenda letras, palavras e o teclado brasileiro com atividades e jogos feitos para crianças e pré-adolescentes.', 'Digitação', 15, 0, '🌟', TRUE, FALSE, $1, 'digitacao-kids')
     ON CONFLICT DO NOTHING
   `, [DIGITACAO_KIDS_SLUG]);
+
+  // 9. Suporte / Chat com Alunos
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS ead_suporte_mensagens (
+      id SERIAL PRIMARY KEY,
+      usuario_id INTEGER REFERENCES ead_usuarios(id) ON DELETE CASCADE,
+      aluno_id INTEGER REFERENCES alunos(id) ON DELETE CASCADE,
+      curso_id INTEGER REFERENCES ead_cursos(id) ON DELETE SET NULL,
+      contexto TEXT,
+      categoria VARCHAR(50) DEFAULT 'duvida',
+      remetente VARCHAR(20) NOT NULL,
+      mensagem TEXT NOT NULL,
+      lida_pelo_admin BOOLEAN DEFAULT FALSE,
+      lida_pelo_aluno BOOLEAN DEFAULT FALSE,
+      status VARCHAR(20) DEFAULT 'aberto',
+      criado_em TIMESTAMP DEFAULT NOW()
+    )
+  `);
 }
 initEadDatabase().catch(err => console.error('[EAD] Erro na migração EAD:', err.message));
 
@@ -1665,5 +1683,322 @@ router.get('/certificados/admin/todos', eadAdminMiddleware, async (req, res, nex
   } catch(e) { next(e); }
 });
 
+// ── PERFIL DETALHADO DO ALUNO EAD (Admin) ──────────────────────────────
+router.get('/admin/alunos/:tipo/:id/perfil', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const { tipo, id } = req.params;
+    const numId = parseInt(id);
+    if (!numId) return res.status(400).json({ error: 'ID inválido' });
+
+    let aluno = null;
+    if (tipo === 'web') {
+      const { rows } = await db.query(
+        `SELECT id, nome, email, cpf, telefone, cidade, perfil, nome_login, criado_em, avatar_url, 'web' AS tipo
+         FROM ead_usuarios WHERE id = $1 AND deletado_em IS NULL`,
+        [numId]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Aluno web não encontrado' });
+      aluno = rows[0];
+    } else {
+      const { rows } = await db.query(
+        `SELECT a.id, a.nome, a.email, a.cpf, a.whatsapp AS telefone, a.pagamento AS criado_em,
+                a.status, a.curso, t.nome AS turma_nome, 'presencial' AS tipo
+         FROM alunos a
+         LEFT JOIN turmas t ON a.turma_id = t.id
+         WHERE a.id = $1`,
+        [numId]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Aluno presencial não encontrado' });
+      aluno = rows[0];
+    }
+
+    // Buscar matrículas ativas do aluno
+    const colId = tipo === 'presencial' ? 'aluno_id' : 'usuario_id';
+    const { rows: mats } = await db.query(
+      `SELECT m.id AS matricula_id, m.curso_id, m.data_matricula, m.status,
+              c.titulo, c.icone, c.carga_horaria, c.tipo_conteudo, c.slug, c.descricao,
+              cert.codigo AS cert_codigo, cert.data_emissao AS cert_emissao
+       FROM ead_matriculas m
+       JOIN ead_cursos c ON c.id = m.curso_id
+       LEFT JOIN ead_certificados cert ON cert.matricula_id = m.id
+       WHERE m.${colId} = $1 AND m.status = 'ativa'
+       ORDER BY m.data_matricula DESC`,
+      [numId]
+    );
+
+    // Para cada matrícula, calcular progresso detalhado
+    const cursosComProgresso = [];
+    for (const mat of mats) {
+      // Total de aulas do curso
+      const { rows: totalAulasRows } = await db.query(
+        `SELECT COUNT(a.id) AS total
+         FROM ead_aulas a
+         JOIN ead_modulos m ON a.modulo_id = m.id
+         WHERE m.curso_id = $1`,
+        [mat.curso_id]
+      );
+      const totalAulas = parseInt(totalAulasRows[0]?.total || 0);
+
+      // Aulas concluídas
+      const { rows: concluidasRows } = await db.query(
+        `SELECT COUNT(p.id) AS concluidas, MAX(p.data_conclusao) AS ultima_atividade
+         FROM ead_progresso p
+         WHERE p.matricula_id = $1`,
+        [mat.matricula_id]
+      );
+      const concluidas = parseInt(concluidasRows[0]?.concluidas || 0);
+      const ultimaAtividade = concluidasRows[0]?.ultima_atividade || null;
+
+      // Calcular %
+      const isDigitacao = mat.tipo_conteudo === 'digitacao' || mat.tipo_conteudo === 'digitacao-kids';
+      let progressoPct = totalAulas > 0 ? Math.min(100, Math.round((concluidas / totalAulas) * 100)) : 0;
+      if (isDigitacao && totalAulas === 0) {
+        // Fallback para digitação se não tiver módulos estáticos
+        progressoPct = concluidas > 0 ? Math.min(100, concluidas) : 0;
+      }
+
+      cursosComProgresso.push({
+        matricula_id: mat.matricula_id,
+        curso_id: mat.curso_id,
+        titulo: mat.titulo,
+        icone: mat.icone || '📚',
+        carga_horaria: mat.carga_horaria,
+        tipo_conteudo: mat.tipo_conteudo,
+        slug: mat.slug,
+        data_matricula: mat.data_matricula,
+        total_aulas: isDigitacao && totalAulas === 0 ? 72 : totalAulas,
+        aulas_concluidas: concluidas,
+        progresso_pct: progressoPct,
+        ultima_atividade: ultimaAtividade,
+        certificado: mat.cert_codigo ? { codigo: mat.cert_codigo, data_emissao: mat.cert_emissao } : null
+      });
+    }
+
+    // Histórico de Suporte deste aluno
+    const { rows: suporte } = await db.query(
+      `SELECT s.*, c.titulo AS curso_titulo
+       FROM ead_suporte_mensagens s
+       LEFT JOIN ead_cursos c ON s.curso_id = c.id
+       WHERE s.${colId} = $1
+       ORDER BY s.criado_em DESC
+       LIMIT 30`,
+      [numId]
+    );
+
+    res.json({
+      aluno,
+      cursos: cursosComProgresso,
+      suporte
+    });
+  } catch (e) { next(e); }
+});
+
+
+// ── SUPORTE & CHAT AO VIVO — ROTAS DO ALUNO ────────────────────────────
+
+// GET /api/ead/suporte/mensagens (Aluno)
+router.get('/suporte/mensagens', eadAuthMiddleware, async (req, res, next) => {
+  try {
+    const colId = req.user.tipo === 'presencial' ? 'aluno_id' : 'usuario_id';
+    const { rows } = await db.query(
+      `SELECT s.*, c.titulo AS curso_titulo
+       FROM ead_suporte_mensagens s
+       LEFT JOIN ead_cursos c ON s.curso_id = c.id
+       WHERE s.${colId} = $1
+       ORDER BY s.criado_em ASC`,
+      [req.user.id]
+    );
+    const naoLidas = rows.filter(r => r.remetente === 'admin' && !r.lida_pelo_aluno).length;
+    res.json({ mensagens: rows, naoLidas });
+  } catch (e) { next(e); }
+});
+
+// POST /api/ead/suporte/mensagens (Aluno envia dúvida/chamado)
+router.post('/suporte/mensagens', eadAuthMiddleware, async (req, res, next) => {
+  try {
+    const { mensagem, curso_id, contexto, categoria } = req.body;
+    if (!mensagem || !mensagem.trim()) {
+      return res.status(400).json({ error: 'Digite uma mensagem antes de enviar.' });
+    }
+    const isPresencial = req.user.tipo === 'presencial';
+    const usuario_id = isPresencial ? null : req.user.id;
+    const aluno_id = isPresencial ? req.user.id : null;
+
+    const { rows } = await db.query(
+      `INSERT INTO ead_suporte_mensagens (usuario_id, aluno_id, curso_id, contexto, categoria, remetente, mensagem, lida_pelo_aluno, lida_pelo_admin, status)
+       VALUES ($1, $2, $3, $4, $5, 'aluno', $6, true, false, 'aberto')
+       RETURNING *`,
+      [usuario_id, aluno_id, curso_id || null, contexto || null, categoria || 'duvida', mensagem.trim()]
+    );
+    res.status(201).json({ ok: true, mensagem: rows[0] });
+  } catch (e) { next(e); }
+});
+
+// PUT /api/ead/suporte/marcar-lido (Aluno marca respostas como lidas)
+router.put('/suporte/marcar-lido', eadAuthMiddleware, async (req, res, next) => {
+  try {
+    const colId = req.user.tipo === 'presencial' ? 'aluno_id' : 'usuario_id';
+    await db.query(
+      `UPDATE ead_suporte_mensagens SET lida_pelo_aluno = true
+       WHERE ${colId} = $1 AND remetente = 'admin' AND lida_pelo_aluno = false`,
+      [req.user.id]
+    );
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// GET /api/ead/suporte/contador (Aluno: contador de respostas não lidas)
+router.get('/suporte/contador', eadAuthMiddleware, async (req, res, next) => {
+  try {
+    const colId = req.user.tipo === 'presencial' ? 'aluno_id' : 'usuario_id';
+    const { rows } = await db.query(
+      `SELECT COUNT(id) AS nao_lidas
+       FROM ead_suporte_mensagens
+       WHERE ${colId} = $1 AND remetente = 'admin' AND lida_pelo_aluno = false`,
+      [req.user.id]
+    );
+    res.json({ naoLidas: parseInt(rows[0]?.nao_lidas || 0) });
+  } catch (e) { next(e); }
+});
+
+
+// ── SUPORTE & CHAT AO VIVO — ROTAS DO ADMIN ────────────────────────────
+
+// GET /api/ead/admin/suporte/conversas (Admin: lista de todos os chamados/alunos)
+router.get('/admin/suporte/conversas', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const { status, search } = req.query;
+    const { rows } = await db.query(`
+      SELECT DISTINCT ON (COALESCE(s.usuario_id, s.aluno_id), CASE WHEN s.usuario_id IS NOT NULL THEN 'web' ELSE 'presencial' END)
+             s.id AS ultima_mensagem_id,
+             s.usuario_id,
+             s.aluno_id,
+             CASE WHEN s.usuario_id IS NOT NULL THEN 'web' ELSE 'presencial' END AS aluno_tipo,
+             COALESCE(u.nome, a.nome) AS aluno_nome,
+             COALESCE(u.email, a.email) AS aluno_email,
+             COALESCE(u.telefone, a.whatsapp) AS aluno_telefone,
+             COALESCE(u.nome_login, '') AS aluno_usuario,
+             u.perfil AS aluno_perfil,
+             s.curso_id,
+             c.titulo AS curso_titulo,
+             s.contexto,
+             s.categoria,
+             s.remetente,
+             s.mensagem,
+             s.status,
+             s.lida_pelo_admin,
+             s.criado_em AS ultima_mensagem_em,
+             (SELECT COUNT(*) FROM ead_suporte_mensagens sm
+               WHERE sm.usuario_id IS NOT DISTINCT FROM s.usuario_id
+                 AND sm.aluno_id IS NOT DISTINCT FROM s.aluno_id
+                 AND sm.remetente = 'aluno'
+                 AND sm.lida_pelo_admin = false) AS nao_lidas
+      FROM ead_suporte_mensagens s
+      LEFT JOIN ead_usuarios u ON s.usuario_id = u.id
+      LEFT JOIN alunos a ON s.aluno_id = a.id
+      LEFT JOIN ead_cursos c ON s.curso_id = c.id
+      ORDER BY COALESCE(s.usuario_id, s.aluno_id), CASE WHEN s.usuario_id IS NOT NULL THEN 'web' ELSE 'presencial' END, s.criado_em DESC
+    `);
+
+    // Ordenar pelas conversas com mensagens mais recentes
+    let conversas = rows.sort((a, b) => new Date(b.ultima_mensagem_em) - new Date(a.ultima_mensagem_em));
+
+    if (status) {
+      conversas = conversas.filter(c => c.status === status);
+    }
+    if (search) {
+      const s = String(search).toLowerCase();
+      conversas = conversas.filter(c =>
+        (c.aluno_nome || '').toLowerCase().includes(s) ||
+        (c.aluno_email || '').toLowerCase().includes(s) ||
+        (c.aluno_telefone || '').includes(s)
+      );
+    }
+
+    res.json(conversas);
+  } catch (e) { next(e); }
+});
+
+// GET /api/ead/admin/suporte/conversa/:tipo/:id (Admin: histórico de um aluno)
+router.get('/admin/suporte/conversa/:tipo/:id', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const { tipo, id } = req.params;
+    const numId = parseInt(id);
+    const colId = tipo === 'presencial' ? 'aluno_id' : 'usuario_id';
+
+    const { rows } = await db.query(
+      `SELECT s.*, c.titulo AS curso_titulo
+       FROM ead_suporte_mensagens s
+       LEFT JOIN ead_cursos c ON s.curso_id = c.id
+       WHERE s.${colId} = $1
+       ORDER BY s.criado_em ASC`,
+      [numId]
+    );
+
+    // Marca como lidas pelo admin
+    await db.query(
+      `UPDATE ead_suporte_mensagens SET lida_pelo_admin = true
+       WHERE ${colId} = $1 AND remetente = 'aluno' AND lida_pelo_admin = false`,
+      [numId]
+    );
+
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
+// POST /api/ead/admin/suporte/responder (Admin responde aluno)
+router.post('/admin/suporte/responder', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const { tipo, id, mensagem, curso_id } = req.body;
+    if (!tipo || !id || !mensagem || !mensagem.trim()) {
+      return res.status(400).json({ error: 'tipo, id e mensagem são obrigatórios' });
+    }
+    const numId = parseInt(id);
+    const isPresencial = tipo === 'presencial';
+    const usuario_id = isPresencial ? null : numId;
+    const aluno_id = isPresencial ? numId : null;
+    const colId = isPresencial ? 'aluno_id' : 'usuario_id';
+
+    const { rows } = await db.query(
+      `INSERT INTO ead_suporte_mensagens (usuario_id, aluno_id, curso_id, remetente, mensagem, lida_pelo_admin, lida_pelo_aluno, status)
+       VALUES ($1, $2, $3, 'admin', $4, true, false, 'respondido')
+       RETURNING *`,
+      [usuario_id, aluno_id, curso_id || null, mensagem.trim()]
+    );
+
+    // Atualiza status dos chamados abertos desse aluno para 'respondido'
+    await db.query(
+      `UPDATE ead_suporte_mensagens SET status = 'respondido', lida_pelo_admin = true
+       WHERE ${colId} = $1 AND status = 'aberto'`,
+      [numId]
+    );
+
+    res.status(201).json({ ok: true, mensagem: rows[0] });
+  } catch (e) { next(e); }
+});
+
+// PUT /api/ead/admin/suporte/status/:id (Admin altera status: 'resolvido' | 'aberto')
+router.put('/admin/suporte/status/:id', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { status } = req.body;
+    await db.query(`UPDATE ead_suporte_mensagens SET status = $1 WHERE id = $2`, [status || 'resolvido', id]);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// GET /api/ead/admin/suporte/contador (Admin: total de mensagens pendentes/não lidas)
+router.get('/admin/suporte/contador', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT COUNT(id) AS total_nao_lidas
+       FROM ead_suporte_mensagens
+       WHERE remetente = 'aluno' AND lida_pelo_admin = false`
+    );
+    res.json({ naoLidas: parseInt(rows[0]?.total_nao_lidas || 0) });
+  } catch (e) { next(e); }
+});
+
 module.exports = router;
 module.exports.eadAuthMiddleware = eadAuthMiddleware;
+
