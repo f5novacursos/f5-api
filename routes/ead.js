@@ -208,6 +208,7 @@ async function initEadDatabase() {
   await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS ranking_publico BOOLEAN NOT NULL DEFAULT TRUE`);
   await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS ead_usuarios_google_sub_unique ON ead_usuarios (google_sub) WHERE google_sub IS NOT NULL`);
   await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS ead_usuarios_nome_login_unique ON ead_usuarios (LOWER(nome_login)) WHERE nome_login IS NOT NULL AND deletado_em IS NULL`);
+  await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS email_responsavel VARCHAR(200)`);
   await db.query(`ALTER TABLE ead_cursos ADD COLUMN IF NOT EXISTS slug VARCHAR(120)`);
   await db.query(`ALTER TABLE ead_cursos ADD COLUMN IF NOT EXISTS tipo_conteudo VARCHAR(30) NOT NULL DEFAULT 'ead'`);
   await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS ead_cursos_slug_unique ON ead_cursos (slug) WHERE slug IS NOT NULL`);
@@ -260,6 +261,50 @@ async function initEadDatabase() {
       criado_em TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  // 10. Garantir os 3 Módulos (Mundos) e 36 Aulas do Digitação Kids no banco
+  try {
+    const { rows: cRows } = await db.query(
+      "SELECT id FROM ead_cursos WHERE slug = $1 OR tipo_conteudo = 'digitacao-kids' LIMIT 1",
+      [DIGITACAO_KIDS_SLUG]
+    );
+    if (cRows.length) {
+      const kidCursoId = cRows[0].id;
+      const mundos = [
+        { ordem: 1, titulo: 'Mundo 1: Primeiros Toques', descricao: 'Posição base, primeiras letras e ritmo inicial' },
+        { ordem: 2, titulo: 'Mundo 2: Palavras e Agilidade', descricao: 'Palavras completas, pontuação e agilidade' },
+        { ordem: 3, titulo: 'Mundo 3: Mestre do Teclado', descricao: 'Acentuação, frases e desafios finais' }
+      ];
+      for (const m of mundos) {
+        let { rows: modRows } = await db.query(
+          "SELECT id FROM ead_modulos WHERE curso_id = $1 AND ordem = $2 LIMIT 1",
+          [kidCursoId, m.ordem]
+        );
+        let modId = modRows[0]?.id;
+        if (!modId) {
+          const { rows: newMod } = await db.query(
+            "INSERT INTO ead_modulos (curso_id, titulo, descricao, ordem) VALUES ($1, $2, $3, $4) RETURNING id",
+            [kidCursoId, m.titulo, m.descricao, m.ordem]
+          );
+          modId = newMod[0].id;
+        }
+        for (let aOrd = 1; aOrd <= 12; aOrd++) {
+          const { rows: aulaEx } = await db.query(
+            "SELECT id FROM ead_aulas WHERE modulo_id = $1 AND ordem = $2 LIMIT 1",
+            [modId, aOrd]
+          );
+          if (!aulaEx.length) {
+            await db.query(
+              "INSERT INTO ead_aulas (modulo_id, titulo, descricao, ordem) VALUES ($1, $2, $3, $4)",
+              [modId, `Atividade ${String(aOrd).padStart(2, '0')} - Mundo ${m.ordem}`, `Exercício interativo ${aOrd} do Mundo ${m.ordem}`, aOrd]
+            );
+          }
+        }
+      }
+    }
+  } catch (errKids) {
+    console.warn('[EAD] Falha ao semear aulas kids:', errKids.message);
+  }
 }
 initEadDatabase().catch(err => console.error('[EAD] Erro na migração EAD:', err.message));
 
@@ -1178,6 +1223,9 @@ router.post('/progresso/kids', eadAuthMiddleware, async (req, res, next) => {
     const { modulo, exercicio, passed, stars, ppm, accuracy } = req.body;
     if (!modulo || !exercicio) return res.status(400).json({ error: 'modulo e exercicio obrigatórios' });
 
+    const modNum = Number(modulo);
+    const exNum = Number(exercicio);
+
     let matQuery = '';
     const params = [req.user.id];
     if (req.user.tipo === 'presencial') {
@@ -1197,29 +1245,75 @@ router.post('/progresso/kids', eadAuthMiddleware, async (req, res, next) => {
 
     if (mats.length && passed) {
       const matriculaId = mats[0].id;
-      const aulaKey = ((Number(modulo) - 1) * 12) + Number(exercicio);
-      await db.query(
-        `INSERT INTO ead_progresso (matricula_id, aula_id, data_conclusao)
-         VALUES ($1, $2, NOW())
-         ON CONFLICT (matricula_id, aula_id) DO UPDATE SET data_conclusao = NOW()`,
-        [matriculaId, aulaKey]
-      );
+      const cursoId = mats[0].curso_id;
+
+      try {
+        // 1. Busca a aula correspondente na árvore do curso Kids
+        let { rows: aulaRows } = await db.query(
+          `SELECT a.id FROM ead_aulas a
+           JOIN ead_modulos m ON a.modulo_id = m.id
+           WHERE m.curso_id = $1 AND m.ordem = $2 AND a.ordem = $3
+           LIMIT 1`,
+          [cursoId, modNum, exNum]
+        );
+        let targetAulaId = aulaRows[0]?.id;
+
+        // Se ainda não existir por algum motivo, cria módulo e aula dinamicamente
+        if (!targetAulaId) {
+          let { rows: modRows } = await db.query(
+            "SELECT id FROM ead_modulos WHERE curso_id = $1 AND ordem = $2 LIMIT 1",
+            [cursoId, modNum]
+          );
+          let modId = modRows[0]?.id;
+          if (!modId) {
+            const { rows: newMod } = await db.query(
+              "INSERT INTO ead_modulos (curso_id, titulo, ordem) VALUES ($1, $2, $3) RETURNING id",
+              [cursoId, `Mundo ${modNum}`, modNum]
+            );
+            modId = newMod[0].id;
+          }
+          const { rows: newAula } = await db.query(
+            "INSERT INTO ead_aulas (modulo_id, titulo, ordem) VALUES ($1, $2, $3) RETURNING id",
+            [modId, `Atividade ${String(exNum).padStart(2, '0')}`, exNum]
+          );
+          targetAulaId = newAula[0]?.id;
+        }
+
+        if (targetAulaId) {
+          await db.query(
+            `INSERT INTO ead_progresso (matricula_id, aula_id, data_conclusao)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (matricula_id, aula_id) DO UPDATE SET data_conclusao = NOW()`,
+            [matriculaId, targetAulaId]
+          );
+        }
+      } catch (errProg) {
+        console.warn('Falha ao gravar ead_progresso kids:', errProg.message);
+      }
     }
 
     // Se o usuário for web, registra também em digitacao_resultados
     if (passed && req.user.tipo === 'web') {
       try {
+        const emailFallback = req.user.email || `${req.user.nome_login || req.user.id}@kids.f5`;
         let { rows: du } = await db.query(
-          "SELECT id FROM digitacao_usuarios WHERE ead_usuario_id = $1 OR id = $1 LIMIT 1",
-          [req.user.id]
+          "SELECT id FROM digitacao_usuarios WHERE ead_usuario_id = $1 OR LOWER(email) = LOWER($2) LIMIT 1",
+          [req.user.id, emailFallback]
         );
         let digUserId = du[0]?.id;
         if (!digUserId) {
           const { rows: newDu } = await db.query(
-            "INSERT INTO digitacao_usuarios (nome, email, ead_usuario_id, status) VALUES ($1, $2, $3, 'ativo') RETURNING id",
-            [req.user.nome, req.user.email || `${req.user.nome_login || req.user.id}@kids.f5`, req.user.id]
+            "INSERT INTO digitacao_usuarios (nome, email, ead_usuario_id, status) VALUES ($1, $2, $3, 'ativo') ON CONFLICT DO NOTHING RETURNING id",
+            [req.user.nome, emailFallback, req.user.id]
           );
           digUserId = newDu[0]?.id;
+          if (!digUserId) {
+            const { rows: duRetry } = await db.query(
+              "SELECT id FROM digitacao_usuarios WHERE ead_usuario_id = $1 OR LOWER(email) = LOWER($2) LIMIT 1",
+              [req.user.id, emailFallback]
+            );
+            digUserId = duRetry[0]?.id;
+          }
         }
         if (digUserId) {
           await db.query(
@@ -1229,7 +1323,7 @@ router.post('/progresso/kids', eadAuthMiddleware, async (req, res, next) => {
                melhor_precisao = GREATEST(digitacao_resultados.melhor_precisao, EXCLUDED.melhor_precisao),
                melhor_ppm = GREATEST(digitacao_resultados.melhor_ppm, EXCLUDED.melhor_ppm),
                atualizado_em = NOW()`,
-            [digUserId, Number(modulo), Number(exercicio), Number(accuracy) || 100, Number(ppm) || 0]
+            [digUserId, modNum, exNum, Number(accuracy) || 100, Number(ppm) || 0]
           );
         }
       } catch (err) {
@@ -1239,6 +1333,103 @@ router.post('/progresso/kids', eadAuthMiddleware, async (req, res, next) => {
 
     res.json({ ok: true });
   } catch(e) { next(e); }
+});
+
+// PUT /api/ead/aluno/perfil-kids — Edição de nome e/ou senha do aluno Kids
+router.put('/aluno/perfil-kids', eadAuthMiddleware, async (req, res, next) => {
+  try {
+    if (req.user.perfil !== 'kids') {
+      return res.status(403).json({ error: 'Operação permitida apenas para contas Kids.' });
+    }
+    const { nome, senha, email_responsavel } = req.body;
+    if (!nome || !nome.trim()) {
+      return res.status(400).json({ error: 'Informe seu nome ou apelido.' });
+    }
+    const nomeLimpo = nome.trim().replace(/\s+/g, ' ');
+    const nomeLogin = normalizarNomeLogin(nomeLimpo);
+
+    if (nomeLimpo.length < 2 || nomeLimpo.length > 40 || !/^[\p{L}\p{N} _.-]+$/u.test(nomeLimpo)) {
+      return res.status(400).json({ error: 'Use um nome ou apelido de 2 a 40 caracteres (apenas letras, números e espaços).' });
+    }
+
+    // Validação opcional de e-mail do responsável
+    let emailRespLimpo = null;
+    if (email_responsavel !== undefined && email_responsavel !== null) {
+      const eStr = String(email_responsavel).trim().toLowerCase();
+      if (eStr) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(eStr)) {
+          return res.status(400).json({ error: 'Informe um e-mail válido para recuperação ou deixe em branco.' });
+        }
+        emailRespLimpo = eStr;
+      }
+    }
+
+    // Verificar se nome_login já está em uso por outro usuário
+    const { rows: existente } = await db.query(
+      'SELECT id FROM ead_usuarios WHERE LOWER(nome_login) = $1 AND id <> $2 AND deletado_em IS NULL LIMIT 1',
+      [nomeLogin, req.user.id]
+    );
+    if (existente.length) {
+      return res.status(409).json({ error: 'Esse nome já está em uso por outro aluno. Escolha outro.' });
+    }
+
+    let senhaHash = null;
+    if (senha && senha.trim()) {
+      if (senha.length < 6 || senha.length > 100) {
+        return res.status(400).json({ error: 'A nova senha precisa ter pelo menos 6 caracteres.' });
+      }
+      senhaHash = await bcrypt.hash(senha, 12);
+    }
+
+    let query = '';
+    let params = [];
+    if (senhaHash && emailRespLimpo !== null) {
+      query = 'UPDATE ead_usuarios SET nome = $1, nome_login = $2, senha_hash = $3, email_responsavel = $4 WHERE id = $5 RETURNING *';
+      params = [nomeLimpo, nomeLogin, senhaHash, emailRespLimpo, req.user.id];
+    } else if (senhaHash) {
+      query = 'UPDATE ead_usuarios SET nome = $1, nome_login = $2, senha_hash = $3 WHERE id = $4 RETURNING *';
+      params = [nomeLimpo, nomeLogin, senhaHash, req.user.id];
+    } else if (emailRespLimpo !== null) {
+      query = 'UPDATE ead_usuarios SET nome = $1, nome_login = $2, email_responsavel = $3 WHERE id = $4 RETURNING *';
+      params = [nomeLimpo, nomeLogin, emailRespLimpo, req.user.id];
+    } else {
+      query = 'UPDATE ead_usuarios SET nome = $1, nome_login = $2 WHERE id = $3 RETURNING *';
+      params = [nomeLimpo, nomeLogin, req.user.id];
+    }
+
+    const { rows: updated } = await db.query(query, params);
+    if (!updated.length) return res.status(404).json({ error: 'Usuário não encontrado.' });
+
+    const u = updated[0];
+
+    // Atualizar também na tabela digitacao_usuarios se houver
+    await db.query(
+      'UPDATE digitacao_usuarios SET nome = $1 WHERE ead_usuario_id = $2',
+      [nomeLimpo, u.id]
+    ).catch(() => {});
+
+    // Buscar cursos ativos para gerar novo token
+    const cursos = await cursosAtivosDaConta('web', u.id);
+    const token = assinarContaEad(u, 'web', cursos);
+
+    res.json({
+      ok: true,
+      msg: 'Perfil atualizado com sucesso!',
+      token,
+      usuario: {
+        id: u.id,
+        nome: u.nome,
+        usuario: u.nome_login || null,
+        email: u.email || null,
+        email_responsavel: u.email_responsavel || null,
+        cidade: u.cidade || null,
+        perfil: u.perfil || 'kids',
+        tipo: 'web',
+        role: 'student',
+        cursos
+      }
+    });
+  } catch (e) { next(e); }
 });
 
 // GET /api/ead/certificados
@@ -1589,6 +1780,35 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
     const supPresMap = {};
     supPres.forEach(s => { supPresMap[s.aluno_id] = parseInt(s.total || 0); });
 
+    // Progresso em ead_progresso
+    const { rows: eadProgs } = await db.query(
+      `SELECT m.usuario_id, m.aluno_id, COUNT(DISTINCT p.aula_id) AS concluidas
+       FROM ead_matriculas m
+       JOIN ead_progresso p ON p.matricula_id = m.id
+       WHERE m.status = 'ativa'
+       GROUP BY m.usuario_id, m.aluno_id`
+    );
+    const eadProgWebMap = {};
+    const eadProgPresMap = {};
+    eadProgs.forEach(p => {
+      if (p.usuario_id) eadProgWebMap[p.usuario_id] = parseInt(p.concluidas || 0);
+      if (p.aluno_id) eadProgPresMap[p.aluno_id] = parseInt(p.concluidas || 0);
+    });
+
+    // Progresso em digitacao_resultados
+    const { rows: digProgs } = await db.query(
+      `SELECT du.ead_usuario_id, du.id AS du_id, COUNT(r.id) AS concluidas
+       FROM digitacao_usuarios du
+       JOIN digitacao_resultados r ON r.usuario_id = du.id
+       GROUP BY du.ead_usuario_id, du.id`
+    );
+    const digProgEadMap = {};
+    const digProgDuMap = {};
+    digProgs.forEach(p => {
+      if (p.ead_usuario_id) digProgEadMap[p.ead_usuario_id] = parseInt(p.concluidas || 0);
+      if (p.du_id) digProgDuMap[p.du_id] = parseInt(p.concluidas || 0);
+    });
+
     // Curso de Digitação F5 ID
     const digCursoId = eadCursos.find(c => c.slug === DIGITACAO_SLUG || c.tipo_conteudo === 'digitacao')?.id || null;
 
@@ -1603,10 +1823,15 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
         "SELECT curso_id FROM ead_matriculas WHERE usuario_id = $1 AND status = 'ativa'",
         [u.id]
       );
+      const concluidas = Math.max(eadProgWebMap[u.id] || 0, digProgEadMap[u.id] || 0);
+      const totalRef = u.perfil === 'kids' ? 36 : 72;
+      const progressoPct = Math.min(100, Math.round((concluidas / totalRef) * 100));
+
       lista.push({
         id: u.id, nome: u.nome, usuario: u.nome_login, email: u.email, cpf: u.cpf,
         telefone: u.telefone, cidade: u.cidade, perfil: u.perfil || 'adulto', criado_em: u.criado_em, tipo: 'web',
         cursos: mats.map(m => m.curso_id),
+        progresso_pct: progressoPct,
         suporte_nao_lidas: supWebMap[u.id] || 0,
       });
     }
@@ -1618,6 +1843,9 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
       );
       for (const du of digUsers) {
         if (du.email && emailsEadSet.has(du.email.toLowerCase())) continue; // já listado em ead_usuarios
+        const concluidas = digProgDuMap[du.id] || 0;
+        const progressoPct = Math.min(100, Math.round((concluidas / 72) * 100));
+
         lista.push({
           id: du.id,
           nome: du.nome,
@@ -1630,6 +1858,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
           criado_em: du.criado_em,
           tipo: 'digitacao',
           cursos: digCursoId ? [digCursoId] : [],
+          progresso_pct: progressoPct,
           suporte_nao_lidas: 0,
         });
       }
@@ -1648,14 +1877,25 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
       const titulos = cursosEadElegiveis(a.turma_nome, a.curso);
       if (!titulos.length) continue; // turma sem equivalente EAD (ex: Design) — pula
       const cursosIds = titulos.map(t => tituloToId[t]).filter(Boolean);
+      const concluidas = eadProgPresMap[a.id] || 0;
+      const progressoPct = Math.min(100, Math.round((concluidas / 40) * 100));
+
       lista.push({
         id: a.id, nome: a.nome, email: a.email, cpf: a.cpf,
         telefone: a.telefone, cidade: a.cidade || null, criado_em: a.criado_em, tipo: 'presencial',
         turma: a.turma_nome || null,
         cursos: cursosIds,
+        progresso_pct: progressoPct,
         suporte_nao_lidas: supPresMap[a.id] || 0,
       });
     }
+
+    // Ordenar toda a lista por data de cadastro mais recente primeiro
+    lista.sort((a, b) => {
+      const da = a.criado_em ? new Date(a.criado_em).getTime() : 0;
+      const db = b.criado_em ? new Date(b.criado_em).getTime() : 0;
+      return db - da;
+    });
 
     // Filtro de busca (nome / cpf / email)
     let result = lista;
@@ -1806,7 +2046,7 @@ router.get('/admin/alunos/:tipo/:id/perfil', eadAdminMiddleware, async (req, res
     let aluno = null;
     if (tipo === 'web') {
       const { rows } = await db.query(
-        `SELECT id, nome, email, cpf, telefone, cidade, perfil, nome_login, criado_em, avatar_url, 'web' AS tipo
+        `SELECT id, nome, email, email_responsavel, cpf, telefone, cidade, perfil, nome_login, criado_em, avatar_url, 'web' AS tipo
          FROM ead_usuarios WHERE id = $1 AND deletado_em IS NULL`,
         [numId]
       );

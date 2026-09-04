@@ -68,6 +68,7 @@ function publicUser(user, courses) {
     id: user.id,
     nome: user.nome,
     email: user.email,
+    email_responsavel: user.email_responsavel || null,
     cpf: user.cpf || null,
     avatar_url: user.avatar_url || null,
     cidade: user.cidade || null,
@@ -237,4 +238,87 @@ router.post('/google', authLimiter, async (req, res, next) => {
   }
 });
 
+// POST /api/conta-f5/kids/recuperar-senha — Recuperação amigável por Nome + Cidade OU E-mail do responsável
+router.post('/kids/recuperar-senha', authLimiter, async (req, res, next) => {
+  try {
+    if (!JWT_SECRET) return res.status(503).json({ error: 'Recuperação ainda não configurada no servidor.' });
+    const email = req.body.email ? normalizeEmail(req.body.email) : '';
+    const nome = String(req.body.nome || '').trim().replace(/\s+/g, ' ');
+    const nomeLogin = normalizeLoginName(nome);
+    const cidade = String(req.body.cidade || '').trim().replace(/\s+/g, ' ');
+    const novaSenha = String(req.body.nova_senha || '');
+
+    if (!novaSenha || novaSenha.length < 6 || novaSenha.length > 100) {
+      return res.status(400).json({ error: 'A nova senha precisa ter pelo menos 6 caracteres.' });
+    }
+
+    let users = [];
+    if (email && validEmail(email)) {
+      // Busca pelo e-mail da conta ou e-mail de recuperação do responsável
+      const q = await db.query(
+        `SELECT * FROM ead_usuarios
+         WHERE deletado_em IS NULL
+           AND perfil = 'kids'
+           AND (LOWER(email) = $1 OR LOWER(email_responsavel) = $1)
+         LIMIT 1`,
+        [email]
+      );
+      users = q.rows;
+    } else {
+      if (!nome || nome.length < 2) {
+        return res.status(400).json({ error: 'Informe seu nome ou apelido (ou o e-mail cadastrado).' });
+      }
+      if (!cidade || cidade.length < 2) {
+        return res.status(400).json({ error: 'Informe sua cidade cadastrada.' });
+      }
+
+      // Busca aluno Kids comparando nome e cidade (case-insensitive)
+      const q = await db.query(
+        `SELECT * FROM ead_usuarios
+         WHERE deletado_em IS NULL
+           AND perfil = 'kids'
+           AND (LOWER(nome_login) = $1 OR LOWER(nome) = LOWER($2))
+           AND LOWER(TRIM(cidade)) = LOWER(TRIM($3))
+         LIMIT 1`,
+        [nomeLogin, nome, cidade]
+      );
+      users = q.rows;
+    }
+
+    if (!users.length) {
+      return res.status(404).json({
+        error: email
+          ? 'Nenhuma conta infantil foi encontrada com esse e-mail. Confira a digitação.'
+          : 'Nome ou cidade não coincidem com os dados cadastrados. Confira como escreveu ou peça ajuda ao professor.'
+      });
+    }
+
+    const user = users[0];
+    const hash = await bcrypt.hash(novaSenha, 12);
+    await db.query(
+      'UPDATE ead_usuarios SET senha_hash = $1 WHERE id = $2',
+      [hash, user.id]
+    );
+
+    // Se existir registro em digitacao_usuarios, atualiza também
+    await db.query(
+      'UPDATE digitacao_usuarios SET senha_hash = $1 WHERE ead_usuario_id = $2',
+      [hash, user.id]
+    ).catch(() => {});
+
+    const courses = await cursosAtivos(user.id);
+    const token = signToken(user, courses);
+
+    res.json({
+      ok: true,
+      msg: 'Senha alterada com sucesso! Entrando...',
+      token,
+      usuario: publicUser(user, courses)
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;
+
