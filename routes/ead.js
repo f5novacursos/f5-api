@@ -1867,7 +1867,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
     // 3) Presenciais ativos/formados, elegíveis pela turma (independe de já ter logado)
     const { rows: pres } = await db.query(`
       SELECT a.id, a.nome, a.email, a.cpf, a.whatsapp AS telefone, a.pagamento AS criado_em,
-             a.curso, a.cidade, t.nome AS turma_nome
+             a.curso, t.nome AS turma_nome
       FROM alunos a
       LEFT JOIN turmas t ON a.turma_id = t.id
       WHERE a.status IN ('ativo', 'formado')
@@ -2065,7 +2065,7 @@ router.get('/admin/alunos/:tipo/:id/perfil', eadAdminMiddleware, async (req, res
       aluno.nome_login = aluno.email ? aluno.email.split('@')[0] : `user${aluno.id}`;
     } else {
       const { rows } = await db.query(
-        `SELECT a.id, a.nome, a.email, a.cpf, a.whatsapp AS telefone, a.cidade, a.pagamento AS criado_em,
+        `SELECT a.id, a.nome, a.email, a.cpf, a.whatsapp AS telefone, a.pagamento AS criado_em,
                 a.status, a.curso, t.nome AS turma_nome, 'presencial' AS tipo
          FROM alunos a
          LEFT JOIN turmas t ON a.turma_id = t.id
@@ -2074,6 +2074,7 @@ router.get('/admin/alunos/:tipo/:id/perfil', eadAdminMiddleware, async (req, res
       );
       if (!rows.length) return res.status(404).json({ error: 'Aluno presencial não encontrado' });
       aluno = rows[0];
+      aluno.cidade = null;
     }
 
     // Buscar matrículas ativas do aluno
