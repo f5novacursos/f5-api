@@ -1814,11 +1814,18 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
 
     // 1) Usuários web (vendas online) + suas matrículas ativas
     const { rows: webs } = await db.query(
-      'SELECT id, nome, nome_login, email, cpf, telefone, cidade, perfil, criado_em FROM ead_usuarios WHERE deletado_em IS NULL ORDER BY nome'
+      'SELECT id, nome, nome_login, email, email_responsavel, cpf, telefone, cidade, perfil, criado_em FROM ead_usuarios WHERE deletado_em IS NULL ORDER BY criado_em DESC NULLS LAST, id DESC'
     );
     const emailsEadSet = new Set();
+    const eadIdsSet = new Set();
+    const kidsNomesSet = new Set();
+
     for (const u of webs) {
       if (u.email) emailsEadSet.add(u.email.toLowerCase());
+      eadIdsSet.add(u.id);
+      if (u.perfil === 'kids' && u.nome_login) kidsNomesSet.add(u.nome_login.toLowerCase());
+      if (u.perfil === 'kids' && u.nome) kidsNomesSet.add(u.nome.toLowerCase());
+
       const { rows: mats } = await db.query(
         "SELECT curso_id FROM ead_matriculas WHERE usuario_id = $1 AND status = 'ativa'",
         [u.id]
@@ -1828,7 +1835,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
       const progressoPct = Math.min(100, Math.round((concluidas / totalRef) * 100));
 
       lista.push({
-        id: u.id, nome: u.nome, usuario: u.nome_login, email: u.email, cpf: u.cpf,
+        id: u.id, nome: u.nome, usuario: u.nome_login, email: u.email, email_responsavel: u.email_responsavel || null, cpf: u.cpf,
         telefone: u.telefone, cidade: u.cidade, perfil: u.perfil || 'adulto', criado_em: u.criado_em, tipo: 'web',
         cursos: mats.map(m => m.curso_id),
         progresso_pct: progressoPct,
@@ -1839,10 +1846,13 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
     // 2) Usuários de Digitação Profissional direta (digitacao_usuarios sem ead_usuario_id vinculado)
     try {
       const { rows: digUsers } = await db.query(
-        "SELECT id, nome, email, cidade, criado_em FROM digitacao_usuarios WHERE status = 'ativo' ORDER BY nome"
+        "SELECT id, nome, email, cidade, criado_em, ead_usuario_id FROM digitacao_usuarios WHERE status = 'ativo' AND ead_usuario_id IS NULL ORDER BY criado_em DESC NULLS LAST"
       );
       for (const du of digUsers) {
-        if (du.email && emailsEadSet.has(du.email.toLowerCase())) continue; // já listado em ead_usuarios
+        if (du.ead_usuario_id && eadIdsSet.has(du.ead_usuario_id)) continue;
+        if (du.email && (emailsEadSet.has(du.email.toLowerCase()) || du.email.endsWith('@kids.f5'))) continue;
+        if (du.nome && kidsNomesSet.has(du.nome.toLowerCase())) continue;
+
         const concluidas = digProgDuMap[du.id] || 0;
         const progressoPct = Math.min(100, Math.round((concluidas / 72) * 100));
 
@@ -2040,9 +2050,11 @@ router.get('/certificados/admin/todos', eadAdminMiddleware, async (req, res, nex
 router.get('/admin/alunos/:tipo/:id/perfil', eadAdminMiddleware, async (req, res, next) => {
   try {
     const { tipo, id } = req.params;
-    const numId = parseInt(id);
+    let numId = parseInt(id);
     if (!numId) return res.status(400).json({ error: 'ID inválido' });
 
+    let tipoReal = tipo;
+    let realId = numId;
     let aluno = null;
     if (tipo === 'web') {
       const { rows } = await db.query(
@@ -2054,15 +2066,31 @@ router.get('/admin/alunos/:tipo/:id/perfil', eadAdminMiddleware, async (req, res
       aluno = rows[0];
     } else if (tipo === 'digitacao') {
       const { rows } = await db.query(
-        `SELECT id, nome, email, cidade, criado_em, avatar_url, 'digitacao' AS tipo, 'adulto' AS perfil
+        `SELECT id, nome, email, cidade, criado_em, avatar_url, ead_usuario_id, 'digitacao' AS tipo, 'adulto' AS perfil
          FROM digitacao_usuarios WHERE id = $1`,
         [numId]
       );
       if (!rows.length) return res.status(404).json({ error: 'Aluno de digitação não encontrado' });
-      aluno = rows[0];
-      aluno.telefone = null;
-      aluno.cpf = null;
-      aluno.nome_login = aluno.email ? aluno.email.split('@')[0] : `user${aluno.id}`;
+      
+      // Se for espelho de um aluno EAD (como conta Kids), carrega o perfil real do EAD!
+      if (rows[0].ead_usuario_id) {
+        const { rows: eadRows } = await db.query(
+          `SELECT id, nome, email, email_responsavel, cpf, telefone, cidade, perfil, nome_login, criado_em, avatar_url, 'web' AS tipo
+           FROM ead_usuarios WHERE id = $1 AND deletado_em IS NULL`,
+          [rows[0].ead_usuario_id]
+        );
+        if (eadRows.length) {
+          aluno = eadRows[0];
+          tipoReal = 'web';
+          realId = aluno.id;
+        }
+      }
+      if (!aluno) {
+        aluno = rows[0];
+        aluno.telefone = null;
+        aluno.cpf = null;
+        aluno.nome_login = aluno.email ? aluno.email.split('@')[0] : `user${aluno.id}`;
+      }
     } else {
       const { rows } = await db.query(
         `SELECT a.id, a.nome, a.email, a.cpf, a.whatsapp AS telefone, a.pagamento AS criado_em,
@@ -2078,9 +2106,9 @@ router.get('/admin/alunos/:tipo/:id/perfil', eadAdminMiddleware, async (req, res
     }
 
     // Buscar matrículas ativas do aluno
-    const colId = tipo === 'presencial' ? 'aluno_id' : 'usuario_id';
+    const colId = tipoReal === 'presencial' ? 'aluno_id' : 'usuario_id';
     let mats = [];
-    if (tipo === 'digitacao') {
+    if (tipoReal === 'digitacao') {
       // Aluno direto de digitação: matrícula sintética com o curso de digitação
       const { rows: digCurso } = await db.query(
         "SELECT id, titulo, icone, carga_horaria, tipo_conteudo, slug, descricao FROM ead_cursos WHERE slug = $1 OR tipo_conteudo = 'digitacao' LIMIT 1",
@@ -2112,7 +2140,7 @@ router.get('/admin/alunos/:tipo/:id/perfil', eadAdminMiddleware, async (req, res
          LEFT JOIN ead_certificados cert ON cert.matricula_id = m.id
          WHERE m.${colId} = $1 AND m.status = 'ativa'
          ORDER BY m.data_matricula DESC`,
-        [numId]
+        [realId]
       );
       mats = rows;
     }
