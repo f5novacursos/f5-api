@@ -792,6 +792,18 @@ router.post('/modulos', eadAdminMiddleware, async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
+// Copia registros no servidor para preservar também as referências privadas dos vídeos.
+router.post('/modulos/:id/copiar', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const copiarModuloEad = require('../lib/copiar-modulo-ead');
+    const resultado = await copiarModuloEad(db, Number(req.params.id), Number(req.body?.curso_id), req.body?.titulo);
+    res.status(201).json(resultado);
+  } catch(e) {
+    if(e.status) return res.status(e.status).json({error:e.message});
+    next(e);
+  }
+});
+
 // PUT /api/ead/modulos/:id (Admin) — renomeia / edita um módulo.
 router.put('/modulos/:id', eadAdminMiddleware, async (req, res, next) => {
   try {
