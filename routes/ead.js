@@ -38,6 +38,7 @@ const DIGITACAO_KIDS_SLUG = 'curso-digitacao-f5-kids';
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const adminAuth = require('../middleware/adminAuth');
+const evolution = require('../lib/evolution');
 
 const BASE_URL = process.env.BASE_URL || 'https://f5novacursos.com.br';
 
@@ -209,6 +210,8 @@ async function initEadDatabase() {
   await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS ead_usuarios_google_sub_unique ON ead_usuarios (google_sub) WHERE google_sub IS NOT NULL`);
   await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS ead_usuarios_nome_login_unique ON ead_usuarios (LOWER(nome_login)) WHERE nome_login IS NOT NULL AND deletado_em IS NULL`);
   await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS email_responsavel VARCHAR(200)`);
+  await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS telefone_responsavel VARCHAR(40)`);
+  await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'ativo'`);
   await db.query(`ALTER TABLE ead_cursos ADD COLUMN IF NOT EXISTS slug VARCHAR(120)`);
   await db.query(`ALTER TABLE ead_cursos ADD COLUMN IF NOT EXISTS tipo_conteudo VARCHAR(30) NOT NULL DEFAULT 'ead'`);
   await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS ead_cursos_slug_unique ON ead_cursos (slug) WHERE slug IS NOT NULL`);
@@ -488,6 +491,10 @@ router.post('/auth/login', async (req, res, next) => {
     const ok = user.senha_hash ? bcrypt.compareSync(senha, user.senha_hash) : false;
     if (!ok) return res.status(401).json({ error: 'Usuário não encontrado ou senha inválida.' });
 
+    if (user.status === 'inativo') {
+      return res.status(403).json({ error: 'Sua conta está inativa. Fale com o professor para reativar seu acesso.' });
+    }
+
     // O Curso de Digitação é gratuito e acompanha toda Conta F5.
     await garantirMatriculaDigitacao('web', user.id, user.perfil);
 
@@ -684,6 +691,91 @@ router.post('/auth/reset-senha', async (req, res, next) => {
     await db.query(`UPDATE ead_reset_tokens SET usado = TRUE WHERE id = $1`, [resetToken.id]);
 
     res.json({ ok: true, msg: 'Senha alterada com sucesso! Faça login com a nova senha.' });
+  } catch(e) { next(e); }
+});
+
+// POST /api/ead/auth/kids-esqueci-senha — recuperação amigável de senha para alunos Kids via WhatsApp do responsável ou cidade
+router.post('/auth/kids-esqueci-senha', async (req, res, next) => {
+  try {
+    const nomeRaw = String(req.body.nome || req.body.usuario || '').trim();
+    const contatoRaw = String(req.body.contato || req.body.whatsapp || req.body.cidade || '').trim();
+
+    if (!nomeRaw || nomeRaw.length < 2) {
+      return res.status(400).json({ error: 'Informe o nome ou apelido cadastrado na conta.' });
+    }
+
+    const nomeNorm = normalizarNomeLogin(nomeRaw);
+    const contatoLimpo = contatoRaw.toLowerCase();
+    const digitos = contatoRaw.replace(/\D/g, '');
+
+    // Busca aluno Kids pelo nome/login
+    const { rows: users } = await db.query(
+      `SELECT id, nome, nome_login, email, email_responsavel, telefone, telefone_responsavel, cidade, COALESCE(status, 'ativo') AS status
+       FROM ead_usuarios
+       WHERE deletado_em IS NULL AND perfil = 'kids' AND (
+         LOWER(nome_login) = $1 OR LOWER(nome) = LOWER($2)
+       )`,
+      [nomeNorm, nomeRaw]
+    );
+
+    if (!users.length) {
+      return res.status(404).json({
+        error: 'Nenhuma conta encontrada com este nome. Confira como escreveu ou peça ajuda ao professor no WhatsApp.'
+      });
+    }
+
+    let user = users[0];
+    if (contatoRaw && users.length > 1) {
+      const match = users.find(u => {
+        const cNome = (u.cidade || '').toLowerCase();
+        const em = (u.email || '').toLowerCase();
+        const emResp = (u.email_responsavel || '').toLowerCase();
+        const tel = (u.telefone || '').replace(/\D/g, '');
+        const telResp = (u.telefone_responsavel || '').replace(/\D/g, '');
+        return (cNome && cNome.includes(contatoLimpo)) ||
+               (em && em === contatoLimpo) ||
+               (emResp && emResp === contatoLimpo) ||
+               (digitos && digitos.length >= 8 && (tel.includes(digitos) || telResp.includes(digitos)));
+      });
+      if (match) user = match;
+    }
+
+    if (user.status === 'inativo') {
+      return res.status(403).json({ error: 'Esta conta está inativa. Peça ao professor para reativar.' });
+    }
+
+    // Gerar uma senha fácil de 4 dígitos
+    const novaSenha = String(Math.floor(1000 + Math.random() * 9000));
+    const hash = await bcrypt.hash(novaSenha, 10);
+
+    await db.query('UPDATE ead_usuarios SET senha_hash = $1 WHERE id = $2', [hash, user.id]);
+    await db.query('UPDATE digitacao_usuarios SET senha_hash = $1 WHERE ead_usuario_id = $2', [hash, user.id]).catch(() => {});
+
+    // WhatsApp do responsável
+    const tel = (user.telefone_responsavel || user.telefone || '').replace(/\D/g, '');
+    let wppEnviado = false;
+    let waLink = null;
+    const msgTexto = `Olá! A nova senha de acesso de *${user.nome}* no Curso de Digitação Kids é:\n\n👤 Usuário: *${user.nome_login || user.nome}*\n🔑 Nova Senha: *${novaSenha}*\n\n👉 Entrar no curso: https://f5novacursos.com.br/digitacao_kids_login.html`;
+
+    if (tel && tel.length >= 10) {
+      const numFmt = tel.startsWith('55') ? tel : ('55' + tel);
+      try {
+        await evolution.enviarTexto(numFmt, msgTexto);
+        wppEnviado = true;
+      } catch(_) {}
+      waLink = `https://wa.me/${numFmt}?text=${encodeURIComponent(msgTexto)}`;
+    }
+
+    res.json({
+      ok: true,
+      usuario: user.nome_login || user.nome,
+      nova_senha: novaSenha,
+      whatsapp_enviado: wppEnviado,
+      whatsapp_link: waLink,
+      mensagem: wppEnviado
+        ? 'Nova senha gerada e enviada para o WhatsApp do responsável!'
+        : `Sua nova senha é: ${novaSenha}`
+    });
   } catch(e) { next(e); }
 });
 
@@ -1966,7 +2058,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
 
     // 1) Usuários web (vendas online) + suas matrículas ativas
     const { rows: webs } = await db.query(
-      'SELECT id, nome, nome_login, email, email_responsavel, cpf, telefone, cidade, perfil, criado_em FROM ead_usuarios WHERE deletado_em IS NULL ORDER BY criado_em DESC NULLS LAST, id DESC'
+      "SELECT id, nome, nome_login, email, email_responsavel, telefone_responsavel, cpf, telefone, cidade, perfil, COALESCE(status, 'ativo') AS status, criado_em FROM ead_usuarios WHERE deletado_em IS NULL ORDER BY criado_em DESC NULLS LAST, id DESC"
     );
     const emailsEadSet = new Set();
     const eadIdsSet = new Set();
@@ -1987,8 +2079,10 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
       const progressoPct = Math.min(100, Math.round((concluidas / totalRef) * 100));
 
       lista.push({
-        id: u.id, nome: u.nome, usuario: u.nome_login, email: u.email, email_responsavel: u.email_responsavel || null, cpf: u.cpf,
-        telefone: u.telefone, cidade: u.cidade, perfil: u.perfil || 'adulto', criado_em: u.criado_em, tipo: 'web',
+        id: u.id, nome: u.nome, usuario: u.nome_login, email: u.email, email_responsavel: u.email_responsavel || null,
+        telefone_responsavel: u.telefone_responsavel || null,
+        cpf: u.cpf, telefone: u.telefone, cidade: u.cidade, perfil: u.perfil || 'adulto', criado_em: u.criado_em, tipo: 'web',
+        status: u.status || 'ativo',
         cursos: mats.map(m => m.curso_id),
         progresso_pct: progressoPct,
         suporte_nao_lidas: supWebMap[u.id] || 0,
@@ -2190,6 +2284,90 @@ router.put('/alunos/digitacao/:id/senha', eadAdminMiddleware, async (req, res, n
   } catch(e) { next(e); }
 });
 
+// PUT /api/ead/alunos/web/:id/status — ativa ou inativa a conta do aluno (admin)
+router.put('/alunos/web/:id/status', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { status } = req.body;
+    const novoStatus = status === 'inativo' ? 'inativo' : 'ativo';
+
+    const { rowCount } = await db.query(
+      'UPDATE ead_usuarios SET status = $1 WHERE id = $2',
+      [novoStatus, id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Aluno não encontrado' });
+
+    // Atualiza status das matrículas EAD sincronamente
+    const matStatus = novoStatus === 'ativo' ? 'ativa' : 'inativa';
+    await db.query(
+      'UPDATE ead_matriculas SET status = $1 WHERE usuario_id = $2',
+      [matStatus, id]
+    );
+
+    res.json({ ok: true, status: novoStatus });
+  } catch(e) { next(e); }
+});
+
+// PUT /api/ead/alunos/web/:id/responsavel — atualiza WhatsApp e E-mail do responsável (admin)
+router.put('/alunos/web/:id/responsavel', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { telefone_responsavel, email_responsavel } = req.body;
+    const tel = telefone_responsavel ? String(telefone_responsavel).trim() : null;
+    const email = email_responsavel ? String(email_responsavel).trim().toLowerCase() : null;
+
+    const { rowCount } = await db.query(
+      'UPDATE ead_usuarios SET telefone_responsavel = $1, email_responsavel = $2 WHERE id = $3',
+      [tel, email, id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Aluno não encontrado' });
+    res.json({ ok: true, mensagem: 'Dados do responsável salvos com sucesso!' });
+  } catch(e) { next(e); }
+});
+
+// POST /api/ead/alunos/web/:id/enviar-senha-whatsapp — envia nova senha diretamente para o WhatsApp do responsável (admin)
+router.post('/alunos/web/:id/enviar-senha-whatsapp', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { senha } = req.body;
+    if (!senha) return res.status(400).json({ error: 'Informe a senha a ser enviada.' });
+
+    const { rows } = await db.query(
+      'SELECT id, nome, nome_login, telefone, telefone_responsavel FROM ead_usuarios WHERE id = $1',
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Aluno não encontrado' });
+    const u = rows[0];
+    const telDestino = (u.telefone_responsavel || u.telefone || '').replace(/\D/g, '');
+    if (!telDestino) {
+      return res.status(400).json({ error: 'Nenhum WhatsApp cadastrado para este aluno ou responsável.' });
+    }
+
+    const numFormatado = telDestino.startsWith('55') ? telDestino : ('55' + telDestino);
+    const texto = `Olá! A senha de acesso de *${u.nome}* no Curso de Digitação Kids foi redefinida com sucesso:\n\n👤 Usuário / Nome: *${u.nome_login || u.nome}*\n🔑 Nova Senha: *${senha}*\n\n👉 Para acessar as aulas: https://f5novacursos.com.br/digitacao_kids_login.html\n\nQualquer dúvida, estamos à disposição! 🤖✨`;
+
+    let enviadoDireto = false;
+    try {
+      await evolution.enviarTexto(numFormatado, texto);
+      enviadoDireto = true;
+    } catch(errEvo) {
+      console.warn('[Evolution] Falha ao enviar WhatsApp direto:', errEvo.message);
+    }
+
+    const waLink = `https://wa.me/${numFormatado}?text=${encodeURIComponent(texto)}`;
+
+    res.json({
+      ok: true,
+      enviado_direto: enviadoDireto,
+      whatsapp_link: waLink,
+      numero: numFormatado,
+      mensagem: enviadoDireto
+        ? 'Senha enviada diretamente para o WhatsApp do responsável!'
+        : 'Mensagem pronta para envio via WhatsApp.'
+    });
+  } catch(e) { next(e); }
+});
+
 // GET /api/ead/alunos/presencial/:id/matriculas — matrículas EAD de um aluno presencial (admin)
 router.get('/alunos/presencial/:id/matriculas', eadAdminMiddleware, async (req, res, next) => {
   try {
@@ -2268,7 +2446,7 @@ router.get('/admin/alunos/:tipo/:id/perfil', eadAdminMiddleware, async (req, res
     let aluno = null;
     if (tipo === 'web') {
       const { rows } = await db.query(
-        `SELECT id, nome, email, email_responsavel, cpf, telefone, cidade, perfil, nome_login, criado_em, avatar_url, 'web' AS tipo
+        `SELECT id, nome, email, email_responsavel, telefone_responsavel, cpf, telefone, cidade, perfil, nome_login, COALESCE(status, 'ativo') AS status, criado_em, avatar_url, 'web' AS tipo
          FROM ead_usuarios WHERE id = $1 AND deletado_em IS NULL`,
         [numId]
       );
@@ -2276,7 +2454,7 @@ router.get('/admin/alunos/:tipo/:id/perfil', eadAdminMiddleware, async (req, res
       aluno = rows[0];
     } else if (tipo === 'digitacao') {
       const { rows } = await db.query(
-        `SELECT id, nome, email, cidade, criado_em, avatar_url, ead_usuario_id, 'digitacao' AS tipo, 'adulto' AS perfil
+        `SELECT id, nome, email, cidade, criado_em, avatar_url, ead_usuario_id, 'digitacao' AS tipo, 'adulto' AS perfil, 'ativo' AS status
          FROM digitacao_usuarios WHERE id = $1`,
         [numId]
       );
@@ -2285,7 +2463,7 @@ router.get('/admin/alunos/:tipo/:id/perfil', eadAdminMiddleware, async (req, res
       // Se for espelho de um aluno EAD (como conta Kids), carrega o perfil real do EAD!
       if (rows[0].ead_usuario_id) {
         const { rows: eadRows } = await db.query(
-          `SELECT id, nome, email, email_responsavel, cpf, telefone, cidade, perfil, nome_login, criado_em, avatar_url, 'web' AS tipo
+          `SELECT id, nome, email, email_responsavel, telefone_responsavel, cpf, telefone, cidade, perfil, nome_login, COALESCE(status, 'ativo') AS status, criado_em, avatar_url, 'web' AS tipo
            FROM ead_usuarios WHERE id = $1 AND deletado_em IS NULL`,
           [rows[0].ead_usuario_id]
         );
