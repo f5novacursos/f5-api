@@ -1238,6 +1238,114 @@ router.post('/progresso', eadAuthMiddleware, async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
+// POST /api/ead/presenca — heartbeat do aluno: grava último acesso (usado para indicador "online")
+router.post('/presenca', eadAuthMiddleware, async (req, res) => {
+  try {
+    // Garante que a coluna existe (executado apenas quando não há ainda)
+    await db.query(`
+      ALTER TABLE ead_matriculas
+      ADD COLUMN IF NOT EXISTS ultimo_acesso TIMESTAMPTZ
+    `).catch(() => {});
+
+    const userId = req.user.id;
+    const tipo   = req.user.tipo;
+
+    if (tipo === 'presencial') {
+      await db.query(
+        "UPDATE ead_matriculas SET ultimo_acesso = NOW() WHERE aluno_id = $1 AND status = 'ativa'",
+        [userId]
+      );
+    } else {
+      await db.query(
+        "UPDATE ead_matriculas SET ultimo_acesso = NOW() WHERE usuario_id = $1 AND status = 'ativa'",
+        [userId]
+      );
+    }
+    res.json({ ok: true });
+  } catch(e) {
+    res.json({ ok: false }); // nunca retorna erro para o cliente — heartbeat é silencioso
+  }
+});
+
+// GET /api/ead/progresso/kids — retorna progresso completo do aluno por mundo/atividade
+router.get('/progresso/kids', eadAuthMiddleware, async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const tipo   = req.user.tipo;
+
+    // Busca matrícula ativa no curso Kids
+    let matQuery = tipo === 'presencial'
+      ? "SELECT m.id, m.curso_id FROM ead_matriculas m JOIN ead_cursos c ON m.curso_id = c.id WHERE m.aluno_id = $1 AND (c.slug = 'curso-digitacao-f5-kids' OR c.tipo_conteudo = 'digitacao-kids') AND m.status = 'ativa' LIMIT 1"
+      : "SELECT m.id, m.curso_id FROM ead_matriculas m JOIN ead_cursos c ON m.curso_id = c.id WHERE m.usuario_id = $1 AND (c.slug = 'curso-digitacao-f5-kids' OR c.tipo_conteudo = 'digitacao-kids') AND m.status = 'ativa' LIMIT 1";
+
+    let { rows: mats } = await db.query(matQuery, [userId]);
+
+    // Fallback: qualquer matrícula ativa para usuário web
+    if (!mats.length && tipo === 'web') {
+      const { rows: anyMat } = await db.query(
+        "SELECT id, curso_id FROM ead_matriculas WHERE usuario_id = $1 AND status = 'ativa' ORDER BY id ASC LIMIT 1",
+        [userId]
+      );
+      mats = anyMat;
+    }
+
+    if (!mats.length) return res.json({ mundos: {} });
+
+    const matriculaId = mats[0].id;
+    const cursoId     = mats[0].curso_id;
+
+    // Busca aulas concluídas com módulo e ordem para reconstruir o progresso
+    const { rows: progRows } = await db.query(
+      `SELECT mod.ordem AS modulo, a.ordem AS exercicio, ep.data_conclusao
+       FROM ead_progresso ep
+       JOIN ead_aulas a    ON ep.aula_id     = a.id
+       JOIN ead_modulos mod ON a.modulo_id   = mod.id
+       WHERE ep.matricula_id = $1 AND mod.curso_id = $2
+       ORDER BY mod.ordem, a.ordem`,
+      [matriculaId, cursoId]
+    );
+
+    // Para usuários web, também busca stars/ppm em digitacao_resultados
+    let detalhes = {};
+    if (tipo === 'web') {
+      const emailFallback = req.user.email || `${req.user.nome_login || userId}@kids.f5`;
+      const { rows: du } = await db.query(
+        "SELECT id FROM digitacao_usuarios WHERE ead_usuario_id = $1 OR LOWER(email) = LOWER($2) LIMIT 1",
+        [userId, emailFallback]
+      );
+      if (du.length) {
+        const { rows: res } = await db.query(
+          `SELECT modulo, exercicio, melhor_precisao, melhor_ppm, aprovado_em
+           FROM digitacao_resultados
+           WHERE usuario_id = $1 AND modulo IN (1,2,3)`,
+          [du[0].id]
+        );
+        res.forEach(r => {
+          const key = `${r.modulo}-${r.exercicio}`;
+          detalhes[key] = { stars: null, ppm: r.melhor_ppm || 0, accuracy: r.melhor_precisao || 100 };
+        });
+      }
+    }
+
+    // Monta resposta agrupada por mundo
+    const mundos = {};
+    progRows.forEach(row => {
+      const mod = Number(row.modulo);
+      const ex  = Number(row.exercicio);
+      if (!mundos[mod]) mundos[mod] = {};
+      const key = `${mod}-${ex}`;
+      mundos[mod][ex] = {
+        passed:   true,
+        stars:    (detalhes[key] && detalhes[key].stars) || null,
+        ppm:      (detalhes[key] && detalhes[key].ppm)   || 0,
+        accuracy: (detalhes[key] && detalhes[key].accuracy) || 100
+      };
+    });
+
+    res.json({ mundos });
+  } catch(e) { next(e); }
+});
+
 // POST /api/ead/progresso/kids
 router.post('/progresso/kids', eadAuthMiddleware, async (req, res, next) => {
   try {
@@ -1810,6 +1918,20 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
     const supPresMap = {};
     supPres.forEach(s => { supPresMap[s.aluno_id] = parseInt(s.total || 0); });
 
+    // Alunos online agora (último heartbeat há menos de 3 minutos)
+    const onlineWebSet  = new Set();
+    const onlinePresSet = new Set();
+    try {
+      const { rows: onlineRows } = await db.query(
+        `SELECT usuario_id, aluno_id FROM ead_matriculas
+         WHERE ultimo_acesso > NOW() - INTERVAL '3 minutes'`
+      );
+      onlineRows.forEach(r => {
+        if (r.usuario_id) onlineWebSet.add(Number(r.usuario_id));
+        if (r.aluno_id)   onlinePresSet.add(Number(r.aluno_id));
+      });
+    } catch(_) {} // coluna pode ainda não existir no DB — ignora silenciosamente
+
     // Progresso em ead_progresso
     const { rows: eadProgs } = await db.query(
       `SELECT m.usuario_id, m.aluno_id, COUNT(DISTINCT p.aula_id) AS concluidas
@@ -1870,6 +1992,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
         cursos: mats.map(m => m.curso_id),
         progresso_pct: progressoPct,
         suporte_nao_lidas: supWebMap[u.id] || 0,
+        online: onlineWebSet.has(Number(u.id)),
       });
     }
 
@@ -1900,6 +2023,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
           cursos: digCursoId ? [digCursoId] : [],
           progresso_pct: progressoPct,
           suporte_nao_lidas: 0,
+          online: false,
         });
       }
     } catch (_) {}
@@ -1927,6 +2051,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
         cursos: cursosIds,
         progresso_pct: progressoPct,
         suporte_nao_lidas: supPresMap[a.id] || 0,
+        online: onlinePresSet.has(Number(a.id)),
       });
     }
 
