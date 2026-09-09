@@ -415,7 +415,7 @@ async function validarCredencialGoogle(credential) {
 // ── ROTAS DE AUTENTICAÇÃO ─────────────────────────────────────────────
 
 // POST /api/ead/auth/login
-router.post('/auth/login', loginLimiter, async (req, res, next) => {
+router.post('/auth/login', async (req, res, next) => {
   try {
     const { cpf, email, usuario, senha } = req.body;
 
@@ -462,7 +462,7 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
       });
     }
 
-    // Fluxo Aluno Público (Web / Venda) via E-mail ou CPF + Senha
+    // Fluxo Aluno Público (Web / Venda / Kids) via E-mail, Usuário ou CPF + Senha
     const idRaw = (email || usuario || cpf || '').trim();
     if (!idRaw || !senha) {
       return res.status(400).json({ error: 'Preencha CPF, e-mail ou nome e senha.' });
@@ -474,7 +474,7 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
     const { rows: users } = await db.query(
       `SELECT * FROM ead_usuarios
        WHERE deletado_em IS NULL AND (
-         LOWER(email) = $1 OR LOWER(nome_login) = $3 OR
+         LOWER(email) = $1 OR LOWER(nome_login) = $3 OR LOWER(nome) = $3 OR LOWER(nome) = $1 OR
          ($2 <> '' AND REPLACE(REPLACE(cpf, '.', ''), '-', '') = $2)
        )`,
       [idEmail, idDigits, idNome]
@@ -2132,6 +2132,61 @@ router.get('/alunos/web/:id/matriculas', eadAdminMiddleware, async (req, res, ne
       [req.params.id]
     );
     res.json(rows);
+  } catch(e) { next(e); }
+});
+
+// PUT /api/ead/alunos/web/:id/senha — altera a senha de um aluno Web / Kids (admin)
+router.put('/alunos/web/:id/senha', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { senha } = req.body;
+    if (!senha || !String(senha).trim()) {
+      return res.status(400).json({ error: 'Informe a nova senha.' });
+    }
+    const senhaLimpa = String(senha).trim();
+    if (senhaLimpa.length < 3) {
+      return res.status(400).json({ error: 'A nova senha deve ter pelo menos 3 caracteres.' });
+    }
+    const hash = await bcrypt.hash(senhaLimpa, 10);
+    const { rowCount } = await db.query(
+      'UPDATE ead_usuarios SET senha_hash = $1 WHERE id = $2',
+      [hash, id]
+    );
+    if (!rowCount) {
+      return res.status(404).json({ error: 'Aluno não encontrado no sistema.' });
+    }
+
+    // Se existir espelho em digitacao_usuarios, atualiza também
+    await db.query(
+      'UPDATE digitacao_usuarios SET senha_hash = $1 WHERE ead_usuario_id = $2',
+      [hash, id]
+    ).catch(() => {});
+
+    res.json({ ok: true, mensagem: 'Senha alterada com sucesso!' });
+  } catch(e) { next(e); }
+});
+
+// PUT /api/ead/alunos/digitacao/:id/senha — altera a senha de um aluno da digitação direta (admin)
+router.put('/alunos/digitacao/:id/senha', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { senha } = req.body;
+    if (!senha || !String(senha).trim()) {
+      return res.status(400).json({ error: 'Informe a nova senha.' });
+    }
+    const senhaLimpa = String(senha).trim();
+    if (senhaLimpa.length < 3) {
+      return res.status(400).json({ error: 'A nova senha deve ter pelo menos 3 caracteres.' });
+    }
+    const hash = await bcrypt.hash(senhaLimpa, 10);
+    const { rowCount } = await db.query(
+      'UPDATE digitacao_usuarios SET senha_hash = $1 WHERE id = $2',
+      [hash, id]
+    );
+    if (!rowCount) {
+      return res.status(404).json({ error: 'Aluno não encontrado no sistema.' });
+    }
+    res.json({ ok: true, mensagem: 'Senha alterada com sucesso!' });
   } catch(e) { next(e); }
 });
 
