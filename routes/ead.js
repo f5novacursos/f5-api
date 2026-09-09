@@ -366,6 +366,26 @@ async function cursosAtivosDaConta(tipo, usuarioId) {
   return rows.map((row) => row.curso_id);
 }
 
+// A renomeação editorial "Curso Completo" não muda a equivalência presencial.
+function correspondeCursoPresencial(titulo, base) {
+  const nome = _norm(titulo).trim();
+  const original = _norm(base).trim();
+  return nome === original || nome.replace(/\s*[-–—]\s*curso completo$/, '').trim() === original;
+}
+
+async function atualizarCursosPresenciais(aluno) {
+  const elegiveis = cursosEadElegiveis(aluno.turma_curso_nome, aluno.curso);
+  const { rows: catalogo } = await db.query('SELECT id, titulo FROM ead_cursos WHERE ativo = true');
+  await garantirMatriculaDigitacao('presencial', aluno.id, 'adulto');
+  for (const curso of catalogo.filter(c => elegiveis.some(t => correspondeCursoPresencial(c.titulo, t)))) {
+    await db.query(
+      `INSERT INTO ead_matriculas (aluno_id, curso_id, status) VALUES ($1, $2, 'ativa')
+       ON CONFLICT (aluno_id, curso_id) DO UPDATE SET status = 'ativa'
+       WHERE ead_matriculas.status = 'pendente'`, [aluno.id, curso.id]);
+  }
+  return cursosAtivosDaConta('presencial', aluno.id);
+}
+
 function assinarContaEad(usuario, tipo, cursos) {
   return jwt.sign(
     { id: usuario.id, nome: usuario.nome, cpf: usuario.cpf || null, tipo, role: 'student', cursos, perfil: usuario.perfil || 'adulto' },
@@ -419,29 +439,7 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
 
       const aluno = alunos[0];
 
-      // Mapear cursos ead elegíveis com base na turma (ou curso) do presencial
-      const cursosElegiveis = cursosEadElegiveis(aluno.turma_curso_nome, aluno.curso);
-
-      // Buscar os IDs correspondentes na tabela ead_cursos
-      const eadCursos = cursosElegiveis.length
-        ? (await db.query('SELECT id, titulo FROM ead_cursos WHERE titulo = ANY($1)', [cursosElegiveis])).rows
-        : [];
-
-      // Todo aluno presencial ativo ou formado recebe Digitação Profissional,
-      // independentemente de a turma possuir outro equivalente no EAD.
-      const digitacaoId = await garantirMatriculaDigitacao('presencial', aluno.id, 'adulto');
-      const cursosLiberadosIds = [digitacaoId];
-
-      // Inserir também as matrículas equivalentes à turma, quando existirem.
-      for (const eadCurso of eadCursos) {
-        if (!cursosLiberadosIds.includes(eadCurso.id)) cursosLiberadosIds.push(eadCurso.id);
-        await db.query(
-          `INSERT INTO ead_matriculas (aluno_id, curso_id, status)
-           VALUES ($1, $2, 'ativa')
-           ON CONFLICT (aluno_id, curso_id) DO NOTHING`,
-          [aluno.id, eadCurso.id]
-        );
-      }
+      const cursosLiberadosIds = await atualizarCursosPresenciais(aluno);
 
       // Gerar Token JWT
       const token = jwt.sign(
@@ -530,6 +528,17 @@ router.post('/auth/login', loginLimiter, async (req, res, next) => {
 // GET /api/ead/auth/me — renova a sessão e inclui matrículas criadas após o login.
 router.get('/auth/me', eadAuthMiddleware, async (req, res, next) => {
   try {
+    if (req.user.tipo === 'presencial') {
+      const { rows } = await db.query(
+        `SELECT a.*, t.nome AS turma_curso_nome FROM alunos a
+         LEFT JOIN turmas t ON a.turma_id = t.id
+         WHERE a.id = $1 AND a.status IN ('ativo', 'formado')`, [req.user.id]);
+      if (!rows.length) return res.status(401).json({ error: 'Aluno não encontrado ou inativo.' });
+      const aluno = rows[0];
+      const cursos = await atualizarCursosPresenciais(aluno);
+      return res.json({ ok: true, token: assinarContaEad(aluno, 'presencial', cursos),
+        usuario: { id: aluno.id, nome: aluno.nome, cpf: aluno.cpf, tipo: 'presencial', role: 'student', cursos } });
+    }
     if (req.user.tipo !== 'web') {
       return res.json({ ok: true, token: req.headers.authorization.slice(7), usuario: req.user });
     }
@@ -1541,6 +1550,15 @@ router.post('/checkout', eadAuthMiddleware, async (req, res, next) => {
 
     const colId = isPresencial ? 'aluno_id' : 'usuario_id';
 
+    // Uma matrícula ativa nunca deve gerar uma nova cobrança.
+    const { rows: acesso } = await client.query(
+      `SELECT id FROM ead_matriculas WHERE ${colId} = $1 AND curso_id = $2 AND status = 'ativa'`,
+      [req.user.id, curso.id]);
+    if (acesso.length) {
+      await client.query('COMMIT');
+      return res.json({ ok: true, status: 'ativa', msg: 'Você já tem acesso a este curso.' });
+    }
+
     // Buscar dados completos do usuário (email e telefone não estão no JWT)
     let userEmail = '', userPhone = '';
     if (isPresencial) {
@@ -1898,7 +1916,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
     for (const a of pres) {
       const titulos = cursosEadElegiveis(a.turma_nome, a.curso);
       if (!titulos.length) continue; // turma sem equivalente EAD (ex: Design) — pula
-      const cursosIds = titulos.map(t => tituloToId[t]).filter(Boolean);
+      const cursosIds = eadCursos.filter(c => titulos.some(t => correspondeCursoPresencial(c.titulo, t))).map(c => c.id);
       const concluidas = eadProgPresMap[a.id] || 0;
       const progressoPct = Math.min(100, Math.round((concluidas / 40) * 100));
 
