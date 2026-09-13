@@ -39,6 +39,9 @@ async function migrate() {
     )`);
   await db.query('CREATE UNIQUE INDEX IF NOT EXISTS digitacao_usuarios_email_unique ON digitacao_usuarios (LOWER(email))');
   await db.query('ALTER TABLE digitacao_usuarios ADD COLUMN IF NOT EXISTS ead_usuario_id BIGINT');
+  await db.query('ALTER TABLE digitacao_usuarios ADD COLUMN IF NOT EXISTS aluno_id BIGINT');
+  await db.query('ALTER TABLE digitacao_usuarios ALTER COLUMN email DROP NOT NULL');
+  await db.query('CREATE UNIQUE INDEX IF NOT EXISTS digitacao_usuarios_aluno_unique ON digitacao_usuarios (aluno_id) WHERE aluno_id IS NOT NULL');
   await db.query('ALTER TABLE digitacao_usuarios ADD COLUMN IF NOT EXISTS cidade VARCHAR(160)');
   await db.query('CREATE UNIQUE INDEX IF NOT EXISTS digitacao_usuarios_ead_unique ON digitacao_usuarios (ead_usuario_id) WHERE ead_usuario_id IS NOT NULL');
   await db.query(`
@@ -145,6 +148,20 @@ async function ensureDigitacaoProfile(eadUserId) {
   }
 }
 
+async function ensurePresencialProfile(alunoId) {
+  const { rows } = await db.query(
+    "SELECT id, nome FROM alunos WHERE id = $1 AND status IN ('ativo', 'formado')", [alunoId]);
+  if (!rows.length) return null;
+  // IDs presenciais e web pertencem a contas distintas, mesmo com o mesmo e-mail.
+  const profile = await db.query(
+    `INSERT INTO digitacao_usuarios (aluno_id, nome, email, ranking_publico, ultimo_acesso)
+     VALUES ($1, $2, NULL, FALSE, NOW())
+     ON CONFLICT (aluno_id) WHERE aluno_id IS NOT NULL
+     DO UPDATE SET nome = EXCLUDED.nome, ultimo_acesso = NOW(), atualizado_em = NOW()
+     RETURNING *`, [rows[0].id, rows[0].nome]);
+  return profile.rows[0];
+}
+
 function verifyStudentToken(token) {
   const secrets = [EAD_JWT_SECRET, JWT_SECRET].filter((secret, index, list) => secret && list.indexOf(secret) === index);
   let lastError = null;
@@ -165,6 +182,8 @@ async function auth(req, res, next) {
     let user = null;
     if (payload.tipo === 'web' && payload.role === 'student') {
       user = await ensureDigitacaoProfile(payload.id);
+    } else if (payload.tipo === 'presencial' && payload.role === 'student') {
+      user = await ensurePresencialProfile(payload.id);
     } else if (payload.tipo === 'digitacao' && payload.role === 'student') {
       const { rows } = await db.query(
         'SELECT id, nome, email, avatar_url, cidade, status, ranking_publico, criado_em, ead_usuario_id ' +
@@ -180,6 +199,10 @@ async function auth(req, res, next) {
     req.accountToken = payload;
     next();
   } catch (error) {
+    if (!['JsonWebTokenError', 'TokenExpiredError', 'NotBeforeError'].includes(error.name) &&
+        !['tipo inválido', 'conta indisponível'].includes(error.message)) {
+      return next(error);
+    }
     return res.status(401).json({ error: 'Sessão inválida ou expirada. Entre novamente.' });
   }
 }
@@ -191,7 +214,7 @@ async function getCertificateContext(userId, queryable = db) {
   const { rows } = await queryable.query(
     'SELECT m.id AS matricula_id, cur.titulo AS curso, cur.carga_horaria ' +
     'FROM digitacao_usuarios du ' +
-    'JOIN ead_matriculas m ON m.usuario_id = du.ead_usuario_id AND m.status = $2 ' +
+    'JOIN ead_matriculas m ON ((m.usuario_id = du.ead_usuario_id AND du.aluno_id IS NULL) OR (m.aluno_id = du.aluno_id AND du.ead_usuario_id IS NULL)) AND m.status = $2 ' +
     'JOIN ead_cursos cur ON cur.id = m.curso_id AND cur.slug = $3 AND cur.ativo = TRUE ' +
     'WHERE du.id = $1 LIMIT 1',
     [userId, 'ativa', 'curso-digitacao-f5']
@@ -203,7 +226,7 @@ async function getCentralCertificate(userId, queryable = db) {
   const { rows } = await queryable.query(
     'SELECT cert.codigo, cur.titulo AS curso, cur.carga_horaria, cert.data_emissao AS emitido_em ' +
     'FROM digitacao_usuarios du ' +
-    'JOIN ead_matriculas m ON m.usuario_id = du.ead_usuario_id ' +
+    'JOIN ead_matriculas m ON ((m.usuario_id = du.ead_usuario_id AND du.aluno_id IS NULL) OR (m.aluno_id = du.aluno_id AND du.ead_usuario_id IS NULL)) ' +
     'JOIN ead_cursos cur ON cur.id = m.curso_id AND cur.slug = $2 ' +
     'JOIN ead_certificados cert ON cert.matricula_id = m.id ' +
     'WHERE du.id = $1 LIMIT 1',
@@ -607,12 +630,13 @@ router.get('/certificados/validar/:codigo', async (req, res, next) => {
   try {
     const code = String(req.params.codigo || '').trim();
     const { rows } = await db.query(
-      'SELECT cert.codigo, cert.data_emissao, cur.titulo AS curso, cur.carga_horaria, u.nome ' +
+      'SELECT cert.codigo, cert.data_emissao, cur.titulo AS curso, cur.carga_horaria, COALESCE(u.nome, a.nome) AS nome ' +
       'FROM ead_certificados cert ' +
       'JOIN ead_matriculas m ON m.id = cert.matricula_id ' +
       'JOIN ead_cursos cur ON cur.id = m.curso_id AND cur.slug = $2 ' +
-      'JOIN ead_usuarios u ON u.id = m.usuario_id AND u.deletado_em IS NULL ' +
-      'WHERE UPPER(cert.codigo) = UPPER($1) LIMIT 1',
+      'LEFT JOIN ead_usuarios u ON u.id = m.usuario_id AND u.deletado_em IS NULL ' +
+      'LEFT JOIN alunos a ON a.id = m.aluno_id ' +
+      'WHERE UPPER(cert.codigo) = UPPER($1) AND (u.id IS NOT NULL OR a.id IS NOT NULL) LIMIT 1',
       [code, 'curso-digitacao-f5']
     );
     if (rows.length) {
