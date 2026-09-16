@@ -379,7 +379,6 @@ function correspondeCursoPresencial(titulo, base) {
 async function atualizarCursosPresenciais(aluno) {
   const elegiveis = cursosEadElegiveis(aluno.turma_curso_nome, aluno.curso);
   const { rows: catalogo } = await db.query('SELECT id, titulo FROM ead_cursos WHERE ativo = true');
-  await garantirMatriculaDigitacao('presencial', aluno.id, 'adulto');
   for (const curso of catalogo.filter(c => elegiveis.some(t => correspondeCursoPresencial(c.titulo, t)))) {
     await db.query(
       `INSERT INTO ead_matriculas (aluno_id, curso_id, status) VALUES ($1, $2, 'ativa')
@@ -2835,4 +2834,3 @@ router.get('/admin/suporte/contador', eadAdminMiddleware, async (req, res, next)
 
 module.exports = router;
 module.exports.eadAuthMiddleware = eadAuthMiddleware;
-
