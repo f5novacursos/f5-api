@@ -133,7 +133,7 @@ router.post('/cadastro', authLimiter, async (req, res, next) => {
   }
 });
 
-router.post('/kids/cadastro', authLimiter, async (req, res, next) => {
+router.post('/kids/cadastro', async (req, res, next) => {
   let client;
   try {
     if (!JWT_SECRET) return res.status(503).json({ error: 'Cadastro ainda não configurado no servidor.' });
@@ -143,7 +143,7 @@ router.post('/kids/cadastro', authLimiter, async (req, res, next) => {
     const cidade = String(req.body.cidade || '').trim().replace(/\s+/g, ' ');
 
     if (nome.length < 2 || nome.length > 40 || !/^[\p{L}\p{N} _.-]+$/u.test(nome)) {
-      return res.status(400).json({ error: 'Use um nome ou apelido de 2 a 40 caracteres.' });
+      return res.status(400).json({ error: 'Use um nome ou apelido de 2 a 40 caracteres (prefira sem espaços para não esquecer).' });
     }
     if (senha.length < 6 || senha.length > 100) {
       return res.status(400).json({ error: 'A senha precisa ter pelo menos 6 caracteres.' });
@@ -160,7 +160,7 @@ router.post('/kids/cadastro', authLimiter, async (req, res, next) => {
     );
     if (existing.rows.length) {
       await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'Esse nome já existe. Escolha outro.' });
+      return res.status(409).json({ error: 'Esse nome já existe, escolha outro.' });
     }
 
     const hash = await bcrypt.hash(senha, 12);
@@ -178,7 +178,7 @@ router.post('/kids/cadastro', authLimiter, async (req, res, next) => {
     res.status(201).json({ token: signToken(user, courses), usuario: publicUser(user, courses) });
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_) {}
-    if (error.code === '23505') return res.status(409).json({ error: 'Esse nome já existe. Escolha outro.' });
+    if (error.code === '23505') return res.status(409).json({ error: 'Esse nome já existe, escolha outro.' });
     next(error);
   } finally {
     if (client) client.release();
