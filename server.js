@@ -42,6 +42,7 @@ app.use('/api/digitacao',   require('./routes/digitacao'));
 app.use('/api/lixeira',     adminAuth, require('./routes/lixeira'));
 app.use('/api/debounce',    require('./routes/debounce'));
 app.use('/api/leads',       require('./routes/leads'));
+app.use('/api/prospeccao',  require('./routes/prospeccao'));
 app.use('/api/planos',      require('./routes/planos'));
 app.use('/api/site-config', require('./routes/site-config'));
 app.use('/api/site-menu',   require('./routes/site-menu'));
