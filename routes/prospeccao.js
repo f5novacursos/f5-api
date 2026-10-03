@@ -3,6 +3,27 @@ const express = require('express');
 const db = require('../db');
 const router = express.Router();
 
+// Um lead pode aparecer em várias buscas (ex.: achado em "Advogado" e depois em "Associação").
+// leads_empresas.busca_id guarda só a 1ª; esta tabela liga o lead a TODAS as buscas que o encontraram.
+db.query(`
+  CREATE TABLE IF NOT EXISTS leads_empresa_buscas (
+    empresa_id INTEGER NOT NULL,
+    busca_id   INTEGER NOT NULL,
+    PRIMARY KEY (empresa_id, busca_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_empresa_buscas_busca ON leads_empresa_buscas (busca_id);
+  INSERT INTO leads_empresa_buscas (empresa_id, busca_id)
+    SELECT id, busca_id FROM leads_empresas WHERE busca_id IS NOT NULL
+  ON CONFLICT DO NOTHING;
+`).catch(e => console.error('[prospeccao] leads_empresa_buscas:', e.message));
+
+const ORDENS = {
+  data_desc: 'e.criado_em DESC',
+  data_asc:  'e.criado_em ASC',
+  nome_asc:  'LOWER(e.nome) ASC',
+  aval_desc: 'e.avaliacao DESC NULLS LAST, e.total_aval DESC NULLS LAST'
+};
+
 async function contaAtiva(id) {
   if (id) {
     const r = await db.query('SELECT * FROM leads_contas_apify WHERE id = $1 AND ativo = true', [id]);
@@ -45,12 +66,15 @@ router.get('/leads', async (req, res) => {
     const page=Math.max(1,Number(req.query.page)||1), limit=Math.min(100,Number(req.query.limit)||50), off=(page-1)*limit;
     const {status,busca_id,cidade,estado,q,nicho,site_filter}=req.query, vals=[], cond=[];
     const add=(sql,value)=>{cond.push(sql.replace('?', `$${vals.length+1}`)); vals.push(value);};
-    if(status)add('e.status=?',status); if(busca_id)add('e.busca_id=?',Number(busca_id)); if(cidade)add('LOWER(e.cidade) LIKE ?',`%${cidade.toLowerCase()}%`); if(estado)add('e.estado=?',estado);
-    if(nicho)add('LOWER(b.nicho)=?',nicho.toLowerCase()); if(site_filter==='com_site')cond.push("e.site IS NOT NULL AND e.site <> ''"); if(site_filter==='sem_site')cond.push("(e.site IS NULL OR e.site = '')");
+    if(status)add('e.status=?',status); if(estado)add('e.estado=?',estado);
+    // Busca e nicho olham TODAS as buscas que encontraram o lead, não só a primeira
+    if(busca_id)add('EXISTS (SELECT 1 FROM leads_empresa_buscas eb WHERE eb.empresa_id=e.id AND eb.busca_id=?)',Number(busca_id));
+    if(cidade)add('LOWER(e.cidade)=?',cidade.toLowerCase());
+    if(nicho)add('EXISTS (SELECT 1 FROM leads_empresa_buscas eb JOIN leads_buscas bb ON bb.id=eb.busca_id WHERE eb.empresa_id=e.id AND LOWER(bb.nicho)=?)',nicho.toLowerCase()); if(site_filter==='com_site')cond.push("e.site IS NOT NULL AND e.site <> ''"); if(site_filter==='sem_site')cond.push("(e.site IS NULL OR e.site = '')");
     if(q){ const p1=`$${vals.length+1}`,p2=`$${vals.length+2}`; cond.push(`(LOWER(e.nome) LIKE ${p1} OR e.telefone LIKE ${p2})`); vals.push(`%${q.toLowerCase()}%`,`%${q}%`); }
     const where=cond.length?'WHERE '+cond.join(' AND '):'';
     const [rows,count]=await Promise.all([
-      db.query(`SELECT e.*,b.nicho,c.nome AS conta_nome FROM leads_empresas e LEFT JOIN leads_buscas b ON b.id=e.busca_id LEFT JOIN leads_contas_apify c ON c.id=e.conta_id ${where} ORDER BY e.criado_em DESC LIMIT $${vals.length+1} OFFSET $${vals.length+2}`,[...vals,limit,off]),
+      db.query(`SELECT e.*,b.nicho,c.nome AS conta_nome FROM leads_empresas e LEFT JOIN leads_buscas b ON b.id=e.busca_id LEFT JOIN leads_contas_apify c ON c.id=e.conta_id ${where} ORDER BY ${ORDENS[req.query.order]||ORDENS.data_desc}, e.id DESC LIMIT $${vals.length+1} OFFSET $${vals.length+2}`,[...vals,limit,off]),
       db.query(`SELECT COUNT(*) FROM leads_empresas e LEFT JOIN leads_buscas b ON b.id=e.busca_id ${where}`,vals)
     ]);
     res.json({data:rows.rows,total:Number(count.rows[0].count),page,limit});
@@ -97,8 +121,8 @@ router.get('/apify/status/:runId', async (req,res)=>{
 
 router.post('/apify/importar/:runId', async (req,res)=>{
   try {const r=await db.query(`SELECT b.*,c.api_token FROM leads_buscas b JOIN leads_contas_apify c ON c.id=b.conta_id WHERE b.actor_run_id=$1`,[req.params.runId]);const busca=r.rows[0];if(!busca)return res.status(404).json({error:'Run não encontrado'});const response=await fetch(`https://api.apify.com/v2/datasets/${busca.dataset_id}/items?token=${busca.api_token}&clean=true&format=json`);if(!response.ok)return res.status(502).json({error:'Erro ao buscar dataset Apify'});const items=await response.json();let novos=0,atualizados=0;let ignorar=[];try{const f=typeof busca.filtros==='string'?JSON.parse(busca.filtros):busca.filtros||{};ignorar=String(f.ignorar||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean)}catch{}
-    for(const item of items){try{const placeId=item.placeId?String(item.placeId).slice(0,300):null,nome=String(item.title||'Sem nome').slice(0,300),categoria=item.categories?.[0]?String(item.categories[0]).slice(0,300):null;if(ignorar.some(x=>`${nome} ${categoria||''}`.toLowerCase().includes(x)))continue;const telefone=String(item.phone||'').replace(/\D/g,'').slice(-11)||null,site=item.website?String(item.website).slice(0,500):null,email=item.emails?.[0]?String(item.emails[0]).slice(0,200):null,instagram=item.instagram?.[0]?String(item.instagram[0]).slice(0,200):null;const existe=placeId?await db.query('SELECT id FROM leads_empresas WHERE place_id=$1',[placeId]):telefone?await db.query("SELECT id FROM leads_empresas WHERE RIGHT(REGEXP_REPLACE(COALESCE(telefone,''),'[^0-9]','','g'),8)=$1",[telefone.slice(-8)]):{rows:[]};if(existe.rows[0]){await db.query('UPDATE leads_empresas SET site=COALESCE(site,$1),email=COALESCE(email,$2),instagram=COALESCE(instagram,$3),atualizado_em=NOW() WHERE id=$4',[site,email,instagram,existe.rows[0].id]);atualizados++;continue}await db.query(`INSERT INTO leads_empresas (place_id,nome,telefone,cidade,estado,categoria,avaliacao,total_aval,site,email,instagram,endereco,cep,latitude,longitude,status,busca_id,conta_id,dados_brutos) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,[placeId,nome,telefone,busca.cidade,busca.estado,categoria,item.rating||null,item.reviewsCount||null,site,email,instagram,item.address||null,item.postalCode?.slice(0,10)||null,item.location?.lat||null,item.location?.lng||null,telefone?'novo':'sem_telefone',busca.id,busca.conta_id,JSON.stringify(item)]);novos++}catch(e){console.error('[prospeccao importar item]',e.message)}}
-    await db.query("UPDATE leads_buscas SET status='concluido',total_retornado=$1,total_novos=$2,total_atualizados=$3,concluido_em=NOW() WHERE id=$4",[items.length,novos,atualizados,busca.id]);res.json({ok:true,total:items.length,novos,atualizados})
+    for(const item of items){try{const placeId=item.placeId?String(item.placeId).slice(0,300):null,nome=String(item.title||'Sem nome').slice(0,300),categoria=item.categories?.[0]?String(item.categories[0]).slice(0,300):null;if(ignorar.some(x=>`${nome} ${categoria||''}`.toLowerCase().includes(x)))continue;const telefone=String(item.phone||'').replace(/\D/g,'').slice(-11)||null,site=item.website?String(item.website).slice(0,500):null,email=item.emails?.[0]?String(item.emails[0]).slice(0,200):null,instagram=item.instagram?.[0]?String(item.instagram[0]).slice(0,200):null;const existe=placeId?await db.query('SELECT id FROM leads_empresas WHERE place_id=$1',[placeId]):telefone?await db.query("SELECT id FROM leads_empresas WHERE RIGHT(REGEXP_REPLACE(COALESCE(telefone,''),'[^0-9]','','g'),8)=$1",[telefone.slice(-8)]):{rows:[]};if(existe.rows[0]){await db.query('UPDATE leads_empresas SET site=COALESCE(site,$1),email=COALESCE(email,$2),instagram=COALESCE(instagram,$3),atualizado_em=NOW() WHERE id=$4',[site,email,instagram,existe.rows[0].id]);await db.query('INSERT INTO leads_empresa_buscas (empresa_id,busca_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',[existe.rows[0].id,busca.id]);atualizados++;continue}const criado=await db.query(`INSERT INTO leads_empresas (place_id,nome,telefone,cidade,estado,categoria,avaliacao,total_aval,site,email,instagram,endereco,cep,latitude,longitude,status,busca_id,conta_id,dados_brutos) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id`,[placeId,nome,telefone,busca.cidade,busca.estado,categoria,item.rating||null,item.reviewsCount||null,site,email,instagram,item.address||null,item.postalCode?.slice(0,10)||null,item.location?.lat||null,item.location?.lng||null,telefone?'novo':'sem_telefone',busca.id,busca.conta_id,JSON.stringify(item)]);await db.query('INSERT INTO leads_empresa_buscas (empresa_id,busca_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',[criado.rows[0].id,busca.id]);novos++}catch(e){console.error('[prospeccao importar item]',e.message)}}
+    await db.query("UPDATE leads_buscas SET status='concluido',total_retornado=$1,total_novos=$2,total_atualizados=$3,concluido_em=NOW() WHERE id=$4",[items.length,novos,atualizados,busca.id]);res.json({ok:true,busca_id:busca.id,total:items.length,novos,atualizados})
   }catch(e){console.error('[prospeccao importar]',e.message);res.status(500).json({error:e.message})}
 });
 
