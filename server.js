@@ -56,6 +56,7 @@ app.use('/api',             require('./routes/clientes-web'));
 const { webhookInfinitePay, payRedirect } = require('./routes/pagamentos');
 app.post('/webhook/infinitepay', webhookInfinitePay);
 app.use('/webhook/chatwoot', require('./routes/chatwoot-webhook'));
+app.use('/webhook/f5leads-resposta', require('./routes/f5leads-resposta-webhook'));
 app.get('/pay/:id', payRedirect);
 
 // ── Health check ───────────────────────────────────────────
