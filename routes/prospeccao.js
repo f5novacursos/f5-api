@@ -102,18 +102,7 @@ router.post('/apify/importar/:runId', async (req,res)=>{
   }catch(e){console.error('[prospeccao importar]',e.message);res.status(500).json({error:e.message})}
 });
 
-router.post('/mensagens/enviar', async (req,res)=>{
-  try { const {empresa_ids,teste_numero,mensagem,instancia=process.env.EVOLUTION_INSTANCE||'zapf5cursos',delay_ms=3000}=req.body;
-    if((!empresa_ids||!empresa_ids.length)&&!teste_numero)return res.status(400).json({error:'empresa_ids ou teste_numero é obrigatório'});if(!mensagem)return res.status(400).json({error:'mensagem é obrigatória'});
-    const ids=teste_numero?['TESTE']:empresa_ids,resultados=[]; const url=process.env.EVOLUTION_URL||'https://evo.f5novacursos.com.br',key=process.env.EVOLUTION_API_KEY||process.env.EVOLUTION_APIKEY||'';
-    if(!key)return res.status(503).json({error:'WhatsApp não configurado nesta instalação'});
-    for(let i=0;i<ids.length;i++){if(i&& !teste_numero&&delay_ms)await new Promise(r=>setTimeout(r,Number(delay_ms)));let empresa=null,numero;
-      if(teste_numero){const n=String(teste_numero).replace(/\D/g,'');numero=n.startsWith('55')?n:`55${n}`}else{const r=await db.query('SELECT * FROM leads_empresas WHERE id=$1',[ids[i]]);empresa=r.rows[0];if(!empresa){resultados.push({empresa_id:ids[i],ok:false,erro:'Empresa não encontrada'});continue}const n=String(empresa.whatsapp||empresa.telefone||'').replace(/\D/g,'');if(n.length<8){resultados.push({empresa_id:ids[i],ok:false,erro:'Sem número válido'});continue}numero=n.startsWith('55')?n:`55${n}`}
-      let msgId=null;if(empresa){const r=await db.query("INSERT INTO leads_mensagens (empresa_id,conteudo,instancia,numero,status) VALUES ($1,$2,$3,$4,'pendente') RETURNING id",[empresa.id,mensagem,instancia,numero]);msgId=r.rows[0].id}
-      try{const response=await fetch(`${url}/message/sendText/${instancia}`,{method:'POST',headers:{'Content-Type':'application/json','apikey':key},body:JSON.stringify({number:numero,text:mensagem,delay:1000})});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||data.error||`Evolution HTTP ${response.status}`);if(empresa){await db.query("UPDATE leads_mensagens SET status='enviado',resultado=$1 WHERE id=$2",[JSON.stringify(data),msgId]);await db.query("UPDATE leads_empresas SET status='mensagem_enviada',atualizado_em=NOW() WHERE id=$1",[empresa.id])}resultados.push({empresa_id:ids[i],ok:true,numero,msg_id:msgId})}catch(e){if(msgId)await db.query("UPDATE leads_mensagens SET status='erro',erro=$1 WHERE id=$2",[e.message,msgId]);resultados.push({empresa_id:ids[i],ok:false,erro:e.message})}
-    } const enviados=resultados.filter(r=>r.ok).length;res.json({ok:true,enviados,erros:resultados.length-enviados,resultados});
-  } catch(e){console.error('[prospeccao mensagens]',e.message);res.status(500).json({error:e.message})}
-});
+router.use('/mensagens', require('./prospeccao-mensagens'));
 
 router.get('/health', (req,res)=>res.json({ok:true,service:'f5-prospeccao'}));
 module.exports=router;
