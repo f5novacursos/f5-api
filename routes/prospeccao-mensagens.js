@@ -7,6 +7,9 @@ const EVO_URL      = process.env.EVOLUTION_URL      || 'https://evo.f5novacursos
 const EVO_APIKEY   = process.env.EVOLUTION_API_KEY || process.env.EVOLUTION_APIKEY || '';
 const EVO_INSTANCE = process.env.EVOLUTION_INSTANCE || 'zapf5cursos';
 
+// Status que indicam que o lead já foi contatado (ou não deve ser) — nunca reenviar
+const STATUS_CONTATADOS = ['mensagem_enviada', 'respondeu', 'cliente', 'nao_enviar', 'ignorado'];
+
 // POST /api/mensagens/enviar
 // Body: { empresa_ids?: [], teste_numero?: string, mensagem: string, instancia?: string, delay_ms?: number, media_base64?: string, media_mimetype?: string, media_name?: string, label_id?: string }
 router.post('/enviar', async (req, res) => {
@@ -21,6 +24,7 @@ router.post('/enviar', async (req, res) => {
 
     const resultados = [];
     const isTest = !!teste_numero;
+    const enviadosNoLote = new Set(); // últimos 8 dígitos já enviados neste disparo
 
     // Se for teste, cria um "mock" de empresa para aproveitar o loop
     const targets = isTest ? ['TESTE'] : empresa_ids;
@@ -50,6 +54,30 @@ router.post('/enviar', async (req, res) => {
           continue;
         }
         numero = numRaw.startsWith('55') ? numRaw : `55${numRaw}`;
+
+        // Anti-reenvio: pula quem já foi contatado (status) ou cujo número já recebeu mensagem
+        // (mesmo que seja outro cadastro da mesma empresa, achado em outra busca)
+        const fim8 = numero.slice(-8);
+        if (STATUS_CONTATADOS.includes(empresa.status)) {
+          resultados.push({ empresa_id, ok: false, pulado: true, numero, erro: `Já contatado (${empresa.status})` });
+          continue;
+        }
+        if (enviadosNoLote.has(fim8)) {
+          resultados.push({ empresa_id, ok: false, pulado: true, numero, erro: 'Número repetido neste disparo' });
+          continue;
+        }
+        const jaRecebeu = await db.query(
+          `SELECT 1 FROM leads_mensagens
+           WHERE status = 'enviado' AND RIGHT(REGEXP_REPLACE(COALESCE(numero, ''), '[^0-9]', '', 'g'), 8) = $1
+           LIMIT 1`,
+          [fim8]
+        );
+        if (jaRecebeu.rows[0]) {
+          await db.query(`UPDATE leads_empresas SET status = 'mensagem_enviada', atualizado_em = NOW() WHERE id = $1`, [empresa_id]);
+          resultados.push({ empresa_id, ok: false, pulado: true, numero, erro: 'Este número já recebeu mensagem antes' });
+          continue;
+        }
+        enviadosNoLote.add(fim8);
       }
 
       let msg_id = null;
@@ -139,9 +167,10 @@ router.post('/enviar', async (req, res) => {
     }
 
     const enviados = resultados.filter(r => r.ok).length;
-    const erros    = resultados.filter(r => !r.ok).length;
+    const pulados  = resultados.filter(r => r.pulado).length;
+    const erros    = resultados.filter(r => !r.ok && !r.pulado).length;
 
-    res.json({ ok: true, enviados, erros, resultados });
+    res.json({ ok: true, enviados, erros, pulados, resultados });
   } catch (e) {
     console.error('[mensagens enviar]', e.message);
     res.status(500).json({ error: e.message });
