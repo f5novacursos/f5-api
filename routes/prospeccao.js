@@ -91,6 +91,23 @@ router.patch('/leads/:id', async (req,res) => {
 });
 
 router.get('/leads/cidades', async (req,res)=>{try{const r=await db.query("SELECT DISTINCT cidade FROM leads_empresas WHERE cidade IS NOT NULL AND cidade <> '' ORDER BY cidade");res.json(r.rows.map(x=>x.cidade))}catch(e){res.status(500).json({error:e.message})}});
+// Detalhe de um lead (botão "Ver"). Fica depois de /leads/cidades para não capturar essa rota.
+router.get('/leads/:id', async (req,res)=>{
+  try {
+    const id=Number(req.params.id); if(!Number.isInteger(id))return res.status(400).json({error:'ID inválido'});
+    const r=await db.query('SELECT e.*,b.nicho FROM leads_empresas e LEFT JOIN leads_buscas b ON b.id=e.busca_id WHERE e.id=$1',[id]);
+    if(!r.rows[0])return res.status(404).json({error:'Lead não encontrado'});
+    res.json(r.rows[0]);
+  } catch(e){res.status(500).json({error:e.message});}
+});
+// Linha do tempo do lead, mais recente primeiro
+router.get('/leads/:id/historico', async (req,res)=>{
+  try {
+    const id=Number(req.params.id); if(!Number.isInteger(id))return res.status(400).json({error:'ID inválido'});
+    const r=await db.query('SELECT id,tipo,descricao,dados,criado_em FROM leads_historico WHERE empresa_id=$1 ORDER BY criado_em DESC, id DESC LIMIT 100',[id]);
+    res.json(r.rows);
+  } catch(e){res.status(500).json({error:e.message});}
+});
 router.post('/leads/limpar-site', async (req,res)=>{try{const {ids}=req.body;if(!Array.isArray(ids)||!ids.length)return res.status(400).json({error:'Nenhum ID fornecido'});await db.query('UPDATE leads_empresas SET site=NULL,atualizado_em=NOW() WHERE id=ANY($1)',[ids]);res.json({ok:true,count:ids.length})}catch(e){res.status(500).json({error:e.message})}});
 
 router.get('/contas', async (req,res)=>{try{const r=await db.query('SELECT id,nome,ativo,modo_auto,ultima_uso,criado_em FROM leads_contas_apify ORDER BY criado_em DESC');res.json(r.rows)}catch(e){res.status(500).json({error:e.message})}});
