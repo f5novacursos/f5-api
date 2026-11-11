@@ -92,14 +92,18 @@ async function processarEmpresa(empresa_id, cfg) {
 
   // Anti-reenvio: pula quem já foi contatado (status) ou cujo número já recebeu mensagem
   // (mesmo que seja outro cadastro da mesma empresa, achado em outra busca, ou repetido neste disparo)
+  if (empresa.status === 'duplicado') {
+    return { status: 'pulado', numero, erro: 'Cadastro duplicado (unido a outro lead)' };
+  }
   if (STATUS_CONTATADOS.includes(empresa.status)) {
     return { status: 'pulado', numero, erro: `Já contatado (${empresa.status})` };
   }
+  // "Mesmo número" = mesmo DDD + 8 últimos dígitos (83 9887-4995 e 85 9887-4995 são empresas diferentes)
   const jaRecebeu = await db.query(
     `SELECT 1 FROM leads_mensagens
-     WHERE status = 'enviado' AND RIGHT(REGEXP_REPLACE(COALESCE(numero, ''), '[^0-9]', '', 'g'), 8) = $1
+     WHERE status = 'enviado' AND f5_chave_telefone($1) IS NOT NULL AND f5_chave_telefone(numero) = f5_chave_telefone($1)
      LIMIT 1`,
-    [numero.slice(-8)]
+    [numero]
   );
   if (jaRecebeu.rows[0]) {
     await db.query(`UPDATE leads_empresas SET status = 'mensagem_enviada', atualizado_em = NOW() WHERE id = $1`, [empresa_id]);
@@ -195,7 +199,7 @@ router.post('/verificar', async (req, res) => {
     const ids = [...new Set((req.body.empresa_ids || []).map(Number).filter(Boolean))];
     if (!ids.length) return res.json({ total: 0, enviar: 0, ids_enviar: [], pulados: [], por_motivo: {} });
     const r = await db.query(
-      `SELECT e.id, e.nome, k.n8, x.ultimo_envio, (${MOTIVO}) AS motivo
+      `SELECT e.id, e.nome, k.chave, x.ultimo_envio, (${MOTIVO}) AS motivo
        FROM leads_empresas e ${LATERAIS}
        WHERE e.id = ANY($1::int[])
        ORDER BY array_position($1::int[], e.id)`, [ids]);
@@ -203,8 +207,8 @@ router.post('/verificar', async (req, res) => {
     for (const l of r.rows) {
       let motivo = l.motivo;
       // dois cadastros com o mesmo número na mesma seleção: só o primeiro recebe
-      if (!motivo && l.n8 && vistos.has(l.n8)) motivo = 'repetido_na_selecao';
-      if (!motivo) { if (l.n8) vistos.add(l.n8); ids_enviar.push(l.id); continue; }
+      if (!motivo && l.chave && vistos.has(l.chave)) motivo = 'repetido_na_selecao';
+      if (!motivo) { if (l.chave) vistos.add(l.chave); ids_enviar.push(l.id); continue; }
       por_motivo[motivo] = (por_motivo[motivo] || 0) + 1;
       pulados.push({ id: l.id, nome: l.nome, motivo, ultimo_envio: l.ultimo_envio });
     }

@@ -2,12 +2,19 @@
 const express = require('express');
 const db = require('../db');
 const router = express.Router();
-const { semAcentoSql, semAcentoJs, LATERAIS, JA_ENVIADO, MOTIVO, NA_FILA } = require('./prospeccao-sql');
+const { semAcentoSql, semAcentoJs, FUNCAO_CHAVE, LATERAIS, JA_ENVIADO, MOTIVO, NA_FILA } = require('./prospeccao-sql');
 
-// Índice para achar rápido "este número já recebeu mensagem?" (últimos 8 dígitos)
-db.query(`CREATE INDEX IF NOT EXISTS idx_leads_mensagens_n8
-  ON leads_mensagens (RIGHT(REGEXP_REPLACE(COALESCE(numero,''), '[^0-9]', '', 'g'), 8)) WHERE status = 'enviado'`)
-  .catch(e => console.error('[prospeccao] idx_leads_mensagens_n8:', e.message));
+// Chave de telefone (DDD + 8 últimos dígitos) e índices para achar rápido "este número já existe / já recebeu mensagem?"
+// A trava UNIQUE (nunca dois leads com o mesmo telefone) é criada à parte: se ainda houver repetidos no banco ela não
+// entra, e é criada assim que os repetidos forem unidos (botão "Unir duplicados" na tela de Leads).
+const INDICE_UNICO = `CREATE UNIQUE INDEX IF NOT EXISTS uq_leads_empresas_chave_telefone
+  ON leads_empresas (f5_chave_telefone(telefone))
+  WHERE status <> 'duplicado' AND f5_chave_telefone(telefone) IS NOT NULL`;
+db.query(`${FUNCAO_CHAVE}
+  CREATE INDEX IF NOT EXISTS idx_leads_mensagens_chave ON leads_mensagens (f5_chave_telefone(numero)) WHERE status = 'enviado';
+  CREATE INDEX IF NOT EXISTS idx_leads_empresas_chave ON leads_empresas (f5_chave_telefone(telefone));`)
+  .then(() => db.query(INDICE_UNICO))
+  .catch(e => console.error('[prospeccao] chave de telefone / trava de duplicados:', e.message));
 
 // Um lead pode aparecer em várias buscas (ex.: achado em "Advogado" e depois em "Associação").
 // leads_empresas.busca_id guarda só a 1ª; esta tabela liga o lead a TODAS as buscas que o encontraram.
@@ -46,8 +53,8 @@ router.get('/stats', async (req, res) => {
         COUNT(*) FILTER (WHERE status='mensagem_enviada') AS enviados,
         COUNT(*) FILTER (WHERE status='respondeu') AS respostas,
         COUNT(*) FILTER (WHERE status='cliente') AS clientes,
-        COUNT(*) FILTER (WHERE status='sem_telefone') AS sem_telefone FROM leads_empresas`),
-      db.query('SELECT status, COUNT(*) AS total FROM leads_empresas GROUP BY status ORDER BY total DESC'),
+        COUNT(*) FILTER (WHERE status='sem_telefone') AS sem_telefone FROM leads_empresas WHERE status <> 'duplicado'`),
+      db.query("SELECT status, COUNT(*) AS total FROM leads_empresas WHERE status <> 'duplicado' GROUP BY status ORDER BY total DESC"),
       db.query(`SELECT b.id,b.nicho,b.cidade,b.estado,b.status,b.total_retornado,b.total_novos,b.criado_em,b.actor_run_id,c.nome AS conta_nome
         FROM leads_buscas b LEFT JOIN leads_contas_apify c ON c.id=b.conta_id ORDER BY b.criado_em DESC LIMIT 5`),
       db.query("SELECT COUNT(*) AS total FROM leads_mensagens WHERE status='enviado'")
@@ -72,7 +79,7 @@ router.get('/leads', async (req, res) => {
     const page=Math.max(1,Number(req.query.page)||1), limit=Math.min(100,Number(req.query.limit)||50), off=(page-1)*limit;
     const {status,busca_id,cidade,estado,q,nicho,site_filter,envio}=req.query, vals=[], cond=[];
     const add=(sql,value)=>{cond.push(sql.replace('?', `$${vals.length+1}`)); vals.push(value);};
-    if(status)add('e.status=?',status); if(estado)add('e.estado=?',estado);
+    if(status)add('e.status=?',status); else cond.push("e.status <> 'duplicado'"); if(estado)add('e.estado=?',estado);
     // Busca e nicho olham TODAS as buscas que encontraram o lead, não só a primeira
     if(busca_id)add('EXISTS (SELECT 1 FROM leads_empresa_buscas eb WHERE eb.empresa_id=e.id AND eb.busca_id=?)',Number(busca_id));
     // Cidade e nicho comparam sem acento e sem diferença de maiúscula ("Joao Pessoa" = "João Pessoa")
@@ -106,12 +113,71 @@ router.patch('/leads/:id', async (req,res) => {
     if(!sets.length)return res.status(400).json({error:'Nada para atualizar'}); vals.push(req.params.id);
     const r=await db.query(`UPDATE leads_empresas SET ${sets.join(', ')}, atualizado_em=NOW() WHERE id=$${vals.length} RETURNING *`,vals);
     if(!r.rows[0])return res.status(404).json({error:'Lead não encontrado'}); res.json(r.rows[0]);
-  } catch(e){res.status(500).json({error:e.message});}
+  } catch(e){
+    if(e.code==='23505')return res.status(409).json({error:'Já existe outro lead com esse telefone'});
+    res.status(500).json({error:e.message});
+  }
 });
 
 // Listas dos filtros: uma entrada por nome "sem acento" ("Joao Pessoa" e "João Pessoa" viram uma só; fica a grafia mais usada)
 router.get('/leads/cidades', async (req,res)=>{try{const k=semAcentoSql('cidade');const r=await db.query(`SELECT cidade FROM (SELECT DISTINCT ON (k) cidade, k FROM (SELECT cidade, ${k} AS k, COUNT(*) AS n FROM leads_empresas WHERE cidade IS NOT NULL AND cidade <> '' GROUP BY cidade) g ORDER BY k, n DESC) t ORDER BY k`);res.json(r.rows.map(x=>x.cidade))}catch(e){res.status(500).json({error:e.message})}});
 router.get('/leads/nichos', async (req,res)=>{try{const k=semAcentoSql('nicho');const r=await db.query(`SELECT nicho FROM (SELECT DISTINCT ON (k) nicho, k FROM (SELECT nicho, ${k} AS k, COUNT(*) AS n FROM leads_buscas WHERE nicho IS NOT NULL AND nicho <> '' GROUP BY nicho) g ORDER BY k, n DESC) t ORDER BY k`);res.json(r.rows.map(x=>x.nicho))}catch(e){res.status(500).json({error:e.message})}});
+// ── Duplicados que já estão no banco ───────────────────────────────────────────
+// Grupo = leads com o mesmo DDD + 8 últimos dígitos. Fica UM (o que já recebeu mensagem; se nenhum, o mais antigo);
+// os outros viram status 'duplicado': somem da lista e nunca recebem mensagem. NADA é apagado (dá para voltar o status).
+async function gruposDuplicados() {
+  const r = await db.query(`
+    SELECT chave, id, nome, status FROM (
+      SELECT f5_chave_telefone(e.telefone) AS chave, e.id, e.nome, e.status, e.criado_em,
+             (e.status IN ('mensagem_enviada','respondeu','cliente')
+              OR EXISTS (SELECT 1 FROM leads_mensagens m WHERE m.empresa_id = e.id AND m.status = 'enviado')) AS tem_envio
+      FROM leads_empresas e
+      WHERE e.status <> 'duplicado' AND f5_chave_telefone(e.telefone) IS NOT NULL
+    ) t
+    WHERE chave IN (SELECT f5_chave_telefone(telefone) FROM leads_empresas
+                    WHERE status <> 'duplicado' AND f5_chave_telefone(telefone) IS NOT NULL
+                    GROUP BY 1 HAVING COUNT(*) > 1)
+    ORDER BY chave, tem_envio DESC, criado_em ASC, id ASC`);
+  const mapa = new Map();
+  for (const l of r.rows) { if (!mapa.has(l.chave)) mapa.set(l.chave, []); mapa.get(l.chave).push(l); }
+  return [...mapa.values()].map(g => ({ manter: g[0], extras: g.slice(1) }));
+}
+
+// Só olha: quantos grupos e quantos cadastros repetidos existem (nada muda)
+router.get('/leads/duplicados', async (req,res)=>{
+  try {
+    const g = await gruposDuplicados();
+    res.json({ grupos: g.length, extras: g.reduce((s,x)=>s+x.extras.length,0),
+      exemplos: g.slice(0,8).map(x => ({ manter: x.manter.nome, repetidos: x.extras.map(e => e.nome) })) });
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
+
+// Une: mantém um por grupo, marca os outros como 'duplicado' e liga o que ficou às buscas dos repetidos
+router.post('/leads/duplicados', async (req,res)=>{
+  try {
+    const grupos = await gruposDuplicados();
+    let marcados = 0;
+    for (const g of grupos) {
+      const ids = g.extras.map(x => x.id), keep = g.manter.id;
+      await db.query('INSERT INTO leads_empresa_buscas (empresa_id,busca_id) SELECT $1,busca_id FROM leads_empresa_buscas WHERE empresa_id=ANY($2::int[]) ON CONFLICT DO NOTHING',[keep,ids]);
+      await db.query(`UPDATE leads_empresas SET
+          site=COALESCE(site,(SELECT site FROM leads_empresas WHERE id=ANY($2::int[]) AND site IS NOT NULL LIMIT 1)),
+          email=COALESCE(email,(SELECT email FROM leads_empresas WHERE id=ANY($2::int[]) AND email IS NOT NULL LIMIT 1)),
+          instagram=COALESCE(instagram,(SELECT instagram FROM leads_empresas WHERE id=ANY($2::int[]) AND instagram IS NOT NULL LIMIT 1)),
+          atualizado_em=NOW() WHERE id=$1`,[keep,ids]);
+      await db.query(`UPDATE leads_empresas SET status='duplicado', observacoes=COALESCE(observacoes||' | ','')||$2, atualizado_em=NOW() WHERE id=ANY($1::int[])`,[ids,`Duplicado do lead #${keep}`]);
+      for (const id of ids) {
+        await db.query(`INSERT INTO leads_historico (empresa_id,tipo,descricao) VALUES ($1,'duplicado',$2)`,[id,`Unido ao lead #${keep} (mesmo telefone)`]).catch(()=>{});
+      }
+      marcados += ids.length;
+    }
+    // Sem repetidos no banco, a trava UNIQUE pode entrar: dali em diante o banco recusa telefone repetido
+    let trava = 'ok';
+    try { await db.query(INDICE_UNICO); } catch(e) { trava = 'falhou: ' + e.message; }
+    res.json({ ok:true, grupos: grupos.length, marcados, trava });
+  } catch(e){ console.error('[prospeccao duplicados]',e.message); res.status(500).json({error:e.message}); }
+});
+
 // Detalhe de um lead (botão "Ver"). Fica depois de /leads/cidades para não capturar essa rota.
 router.get('/leads/:id', async (req,res)=>{
   try {
@@ -157,10 +223,63 @@ router.get('/apify/status/:runId', async (req,res)=>{
   try {const r=await db.query(`SELECT b.*,c.api_token FROM leads_buscas b JOIN leads_contas_apify c ON c.id=b.conta_id WHERE b.actor_run_id=$1`,[req.params.runId]);const busca=r.rows[0];if(!busca)return res.status(404).json({error:'Run não encontrado'});const response=await fetch(`https://api.apify.com/v2/actor-runs/${req.params.runId}?token=${busca.api_token}`);if(!response.ok)return res.status(502).json({error:'Erro ao consultar Apify'});const data=await response.json(),status=data.data?.status;if(status==='SUCCEEDED')await db.query("UPDATE leads_buscas SET status='importando' WHERE id=$1 AND status='executando'",[busca.id]);if(status==='FAILED'||status==='ABORTED')await db.query("UPDATE leads_buscas SET status='erro',erro_msg=$1,concluido_em=NOW() WHERE id=$2",[status,busca.id]);res.json({busca_id:busca.id,run_id:req.params.runId,apify_status:status,dataset_id:data.data?.defaultDatasetId,stats:data.data?.stats})}catch(e){res.status(500).json({error:e.message})}
 });
 
+// Importa o resultado do Apify SEM criar repetidos.
+// Mesma empresa = mesmo place_id (identificador do Google) OU mesmo telefone (DDD + 8 últimos dígitos).
+// Se já existe, não cria outra: só completa site/e-mail/Instagram que estavam vazios e liga o lead a esta busca.
+// A trava UNIQUE do banco é a garantia final: se duas importações tentarem criar o mesmo telefone ao mesmo tempo, a segunda vira "atualizado".
 router.post('/apify/importar/:runId', async (req,res)=>{
-  try {const r=await db.query(`SELECT b.*,c.api_token FROM leads_buscas b JOIN leads_contas_apify c ON c.id=b.conta_id WHERE b.actor_run_id=$1`,[req.params.runId]);const busca=r.rows[0];if(!busca)return res.status(404).json({error:'Run não encontrado'});const response=await fetch(`https://api.apify.com/v2/datasets/${busca.dataset_id}/items?token=${busca.api_token}&clean=true&format=json`);if(!response.ok)return res.status(502).json({error:'Erro ao buscar dataset Apify'});const items=await response.json();let novos=0,atualizados=0;let ignorar=[];try{const f=typeof busca.filtros==='string'?JSON.parse(busca.filtros):busca.filtros||{};ignorar=String(f.ignorar||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean)}catch{}
-    for(const item of items){try{const placeId=item.placeId?String(item.placeId).slice(0,300):null,nome=String(item.title||'Sem nome').slice(0,300),categoria=item.categories?.[0]?String(item.categories[0]).slice(0,300):null;if(ignorar.some(x=>`${nome} ${categoria||''}`.toLowerCase().includes(x)))continue;const telefone=String(item.phone||'').replace(/\D/g,'').slice(-11)||null,site=item.website?String(item.website).slice(0,500):null,email=item.emails?.[0]?String(item.emails[0]).slice(0,200):null,instagram=item.instagram?.[0]?String(item.instagram[0]).slice(0,200):null;const existe=placeId?await db.query('SELECT id FROM leads_empresas WHERE place_id=$1',[placeId]):telefone?await db.query("SELECT id FROM leads_empresas WHERE RIGHT(REGEXP_REPLACE(COALESCE(telefone,''),'[^0-9]','','g'),8)=$1",[telefone.slice(-8)]):{rows:[]};if(existe.rows[0]){await db.query('UPDATE leads_empresas SET site=COALESCE(site,$1),email=COALESCE(email,$2),instagram=COALESCE(instagram,$3),atualizado_em=NOW() WHERE id=$4',[site,email,instagram,existe.rows[0].id]);await db.query('INSERT INTO leads_empresa_buscas (empresa_id,busca_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',[existe.rows[0].id,busca.id]);atualizados++;continue}const criado=await db.query(`INSERT INTO leads_empresas (place_id,nome,telefone,cidade,estado,categoria,avaliacao,total_aval,site,email,instagram,endereco,cep,latitude,longitude,status,busca_id,conta_id,dados_brutos) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id`,[placeId,nome,telefone,busca.cidade,busca.estado,categoria,item.rating||null,item.reviewsCount||null,site,email,instagram,item.address||null,item.postalCode?.slice(0,10)||null,item.location?.lat||null,item.location?.lng||null,telefone?'novo':'sem_telefone',busca.id,busca.conta_id,JSON.stringify(item)]);await db.query('INSERT INTO leads_empresa_buscas (empresa_id,busca_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',[criado.rows[0].id,busca.id]);novos++}catch(e){console.error('[prospeccao importar item]',e.message)}}
-    await db.query("UPDATE leads_buscas SET status='concluido',total_retornado=$1,total_novos=$2,total_atualizados=$3,concluido_em=NOW() WHERE id=$4",[items.length,novos,atualizados,busca.id]);res.json({ok:true,busca_id:busca.id,total:items.length,novos,atualizados})
+  try {
+    const r=await db.query(`SELECT b.*,c.api_token FROM leads_buscas b JOIN leads_contas_apify c ON c.id=b.conta_id WHERE b.actor_run_id=$1`,[req.params.runId]);
+    const busca=r.rows[0]; if(!busca)return res.status(404).json({error:'Run não encontrado'});
+    const response=await fetch(`https://api.apify.com/v2/datasets/${busca.dataset_id}/items?token=${busca.api_token}&clean=true&format=json`);
+    if(!response.ok)return res.status(502).json({error:'Erro ao buscar dataset Apify'});
+    const items=await response.json();
+
+    let ignorar=[];
+    try{const f=typeof busca.filtros==='string'?JSON.parse(busca.filtros):busca.filtros||{};ignorar=String(f.ignorar||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean)}catch{}
+
+    // Procura o lead já cadastrado: primeiro pelo place_id, depois pelo telefone (DDD + 8 dígitos)
+    const achar=async(placeId,telefone)=>{
+      if(placeId){const p=await db.query('SELECT id FROM leads_empresas WHERE place_id=$1',[placeId]);if(p.rows[0])return p.rows[0].id}
+      if(telefone){const t=await db.query("SELECT id FROM leads_empresas WHERE f5_chave_telefone(telefone)=f5_chave_telefone($1) AND status<>'duplicado' ORDER BY id LIMIT 1",[telefone]);if(t.rows[0])return t.rows[0].id}
+      return null;
+    };
+    const reencontrado=async(id,site,email,instagram)=>{
+      await db.query('UPDATE leads_empresas SET site=COALESCE(site,$1),email=COALESCE(email,$2),instagram=COALESCE(instagram,$3),atualizado_em=NOW() WHERE id=$4',[site,email,instagram,id]);
+      await db.query('INSERT INTO leads_empresa_buscas (empresa_id,busca_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',[id,busca.id]);
+    };
+
+    let novos=0,atualizados=0;
+    for(const item of items){
+      try{
+        const placeId=item.placeId?String(item.placeId).slice(0,300):null;
+        const nome=String(item.title||'Sem nome').slice(0,300);
+        const categoria=item.categories?.[0]?String(item.categories[0]).slice(0,300):null;
+        if(ignorar.some(x=>`${nome} ${categoria||''}`.toLowerCase().includes(x)))continue;
+        const telefone=String(item.phone||'').replace(/\D/g,'').slice(-11)||null;
+        const site=item.website?String(item.website).slice(0,500):null;
+        const email=item.emails?.[0]?String(item.emails[0]).slice(0,200):null;
+        const instagram=item.instagram?.[0]?String(item.instagram[0]).slice(0,200):null;
+
+        const existente=await achar(placeId,telefone);
+        if(existente){await reencontrado(existente,site,email,instagram);atualizados++;continue}
+
+        try{
+          const criado=await db.query(`INSERT INTO leads_empresas (place_id,nome,telefone,cidade,estado,categoria,avaliacao,total_aval,site,email,instagram,endereco,cep,latitude,longitude,status,busca_id,conta_id,dados_brutos) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id`,
+            [placeId,nome,telefone,busca.cidade,busca.estado,categoria,item.rating||null,item.reviewsCount||null,site,email,instagram,item.address||null,item.postalCode?.slice(0,10)||null,item.location?.lat||null,item.location?.lng||null,telefone?'novo':'sem_telefone',busca.id,busca.conta_id,JSON.stringify(item)]);
+          await db.query('INSERT INTO leads_empresa_buscas (empresa_id,busca_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',[criado.rows[0].id,busca.id]);
+          novos++;
+        }catch(e){
+          // Outra importação criou esse mesmo lead no meio tempo (trava UNIQUE): trata como já existente
+          if(e.code!=='23505')throw e;
+          const id=await achar(placeId,telefone);
+          if(!id)throw e;
+          await reencontrado(id,site,email,instagram);atualizados++;
+        }
+      }catch(e){console.error('[prospeccao importar item]',e.message)}
+    }
+    await db.query("UPDATE leads_buscas SET status='concluido',total_retornado=$1,total_novos=$2,total_atualizados=$3,concluido_em=NOW() WHERE id=$4",[items.length,novos,atualizados,busca.id]);
+    res.json({ok:true,busca_id:busca.id,total:items.length,novos,atualizados});
   }catch(e){console.error('[prospeccao importar]',e.message);res.status(500).json({error:e.message})}
 });
 
