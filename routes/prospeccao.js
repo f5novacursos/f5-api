@@ -2,6 +2,12 @@
 const express = require('express');
 const db = require('../db');
 const router = express.Router();
+const { semAcentoSql, semAcentoJs, LATERAIS, JA_ENVIADO, MOTIVO, NA_FILA } = require('./prospeccao-sql');
+
+// Índice para achar rápido "este número já recebeu mensagem?" (últimos 8 dígitos)
+db.query(`CREATE INDEX IF NOT EXISTS idx_leads_mensagens_n8
+  ON leads_mensagens (RIGHT(REGEXP_REPLACE(COALESCE(numero,''), '[^0-9]', '', 'g'), 8)) WHERE status = 'enviado'`)
+  .catch(e => console.error('[prospeccao] idx_leads_mensagens_n8:', e.message));
 
 // Um lead pode aparecer em várias buscas (ex.: achado em "Advogado" e depois em "Associação").
 // leads_empresas.busca_id guarda só a 1ª; esta tabela liga o lead a TODAS as buscas que o encontraram.
@@ -64,20 +70,33 @@ router.get('/buscas', async (req, res) => {
 router.get('/leads', async (req, res) => {
   try {
     const page=Math.max(1,Number(req.query.page)||1), limit=Math.min(100,Number(req.query.limit)||50), off=(page-1)*limit;
-    const {status,busca_id,cidade,estado,q,nicho,site_filter}=req.query, vals=[], cond=[];
+    const {status,busca_id,cidade,estado,q,nicho,site_filter,envio}=req.query, vals=[], cond=[];
     const add=(sql,value)=>{cond.push(sql.replace('?', `$${vals.length+1}`)); vals.push(value);};
     if(status)add('e.status=?',status); if(estado)add('e.estado=?',estado);
     // Busca e nicho olham TODAS as buscas que encontraram o lead, não só a primeira
     if(busca_id)add('EXISTS (SELECT 1 FROM leads_empresa_buscas eb WHERE eb.empresa_id=e.id AND eb.busca_id=?)',Number(busca_id));
-    if(cidade)add('LOWER(e.cidade)=?',cidade.toLowerCase());
-    if(nicho)add('EXISTS (SELECT 1 FROM leads_empresa_buscas eb JOIN leads_buscas bb ON bb.id=eb.busca_id WHERE eb.empresa_id=e.id AND LOWER(bb.nicho)=?)',nicho.toLowerCase()); if(site_filter==='com_site')cond.push("e.site IS NOT NULL AND e.site <> ''"); if(site_filter==='sem_site')cond.push("(e.site IS NULL OR e.site = '')");
-    if(q){ const p1=`$${vals.length+1}`,p2=`$${vals.length+2}`; cond.push(`(LOWER(e.nome) LIKE ${p1} OR e.telefone LIKE ${p2})`); vals.push(`%${q.toLowerCase()}%`,`%${q}%`); }
+    // Cidade e nicho comparam sem acento e sem diferença de maiúscula ("Joao Pessoa" = "João Pessoa")
+    if(cidade)add(`${semAcentoSql('e.cidade')}=?`,semAcentoJs(cidade));
+    if(nicho)add(`EXISTS (SELECT 1 FROM leads_empresa_buscas eb JOIN leads_buscas bb ON bb.id=eb.busca_id WHERE eb.empresa_id=e.id AND ${semAcentoSql('bb.nicho')}=?)`,semAcentoJs(nicho));
+    if(site_filter==='com_site')cond.push("e.site IS NOT NULL AND e.site <> ''"); if(site_filter==='sem_site')cond.push("(e.site IS NULL OR e.site = '')");
+    // Já recebeu mensagem? (este cadastro OU qualquer outro com o mesmo número)
+    if(envio==='nunca')cond.push(`NOT ${JA_ENVIADO}`); if(envio==='ja')cond.push(JA_ENVIADO);
+    if(q){
+      const nome=semAcentoJs(q).replace(/[\\%_]/g,'\\$&'), digitos=q.replace(/\D/g,'');
+      const partes=[`${semAcentoSql('e.nome')} LIKE $${vals.length+1}`]; vals.push(`%${nome}%`);
+      // Telefone: compara só os dígitos, então "(83) 9887-4995", "83 98874995" e "98874995" acham o mesmo lead
+      if(digitos.length>=3){ partes.push(`REGEXP_REPLACE(COALESCE(e.telefone,'')||COALESCE(e.whatsapp,''),'[^0-9]','','g') LIKE $${vals.length+1}`); vals.push(`%${digitos}%`); }
+      cond.push(`(${partes.join(' OR ')})`);
+    }
     const where=cond.length?'WHERE '+cond.join(' AND '):'';
-    const [rows,count]=await Promise.all([
-      db.query(`SELECT e.*,b.nicho,c.nome AS conta_nome FROM leads_empresas e LEFT JOIN leads_buscas b ON b.id=e.busca_id LEFT JOIN leads_contas_apify c ON c.id=e.conta_id ${where} ORDER BY ${ORDENS[req.query.order]||ORDENS.data_desc}, e.id DESC LIMIT $${vals.length+1} OFFSET $${vals.length+2}`,[...vals,limit,off]),
-      db.query(`SELECT COUNT(*) FROM leads_empresas e LEFT JOIN leads_buscas b ON b.id=e.busca_id ${where}`,vals)
+    const from=`FROM leads_empresas e LEFT JOIN leads_buscas b ON b.id=e.busca_id LEFT JOIN leads_contas_apify c ON c.id=e.conta_id ${LATERAIS}`;
+    const [rows,resumo]=await Promise.all([
+      db.query(`SELECT e.*,b.nicho,c.nome AS conta_nome,x.ultimo_envio,x.qtd_envios,${JA_ENVIADO} AS ja_enviado,${NA_FILA} AS na_fila,(${MOTIVO}) AS bloqueio ${from} ${where} ORDER BY ${ORDENS[req.query.order]||ORDENS.data_desc}, e.id DESC LIMIT $${vals.length+1} OFFSET $${vals.length+2}`,[...vals,limit,off]),
+      db.query(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE ${JA_ENVIADO})::int AS ja_enviados,
+          COUNT(*) FILTER (WHERE (${MOTIVO}) IS NULL)::int AS disponiveis ${from} ${where}`,vals)
     ]);
-    res.json({data:rows.rows,total:Number(count.rows[0].count),page,limit});
+    const r=resumo.rows[0];
+    res.json({data:rows.rows,total:r.total,resumo:{ja_enviados:r.ja_enviados,disponiveis:r.disponiveis},page,limit});
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
@@ -90,7 +109,9 @@ router.patch('/leads/:id', async (req,res) => {
   } catch(e){res.status(500).json({error:e.message});}
 });
 
-router.get('/leads/cidades', async (req,res)=>{try{const r=await db.query("SELECT DISTINCT cidade FROM leads_empresas WHERE cidade IS NOT NULL AND cidade <> '' ORDER BY cidade");res.json(r.rows.map(x=>x.cidade))}catch(e){res.status(500).json({error:e.message})}});
+// Listas dos filtros: uma entrada por nome "sem acento" ("Joao Pessoa" e "João Pessoa" viram uma só; fica a grafia mais usada)
+router.get('/leads/cidades', async (req,res)=>{try{const k=semAcentoSql('cidade');const r=await db.query(`SELECT cidade FROM (SELECT DISTINCT ON (k) cidade, k FROM (SELECT cidade, ${k} AS k, COUNT(*) AS n FROM leads_empresas WHERE cidade IS NOT NULL AND cidade <> '' GROUP BY cidade) g ORDER BY k, n DESC) t ORDER BY k`);res.json(r.rows.map(x=>x.cidade))}catch(e){res.status(500).json({error:e.message})}});
+router.get('/leads/nichos', async (req,res)=>{try{const k=semAcentoSql('nicho');const r=await db.query(`SELECT nicho FROM (SELECT DISTINCT ON (k) nicho, k FROM (SELECT nicho, ${k} AS k, COUNT(*) AS n FROM leads_buscas WHERE nicho IS NOT NULL AND nicho <> '' GROUP BY nicho) g ORDER BY k, n DESC) t ORDER BY k`);res.json(r.rows.map(x=>x.nicho))}catch(e){res.status(500).json({error:e.message})}});
 // Detalhe de um lead (botão "Ver"). Fica depois de /leads/cidades para não capturar essa rota.
 router.get('/leads/:id', async (req,res)=>{
   try {

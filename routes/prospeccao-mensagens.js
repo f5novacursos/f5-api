@@ -2,6 +2,7 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
+const { LATERAIS, MOTIVO } = require('./prospeccao-sql');
 
 const EVO_URL      = process.env.EVOLUTION_URL      || 'https://evo.f5novacursos.com.br';
 const EVO_APIKEY   = process.env.EVOLUTION_API_KEY || process.env.EVOLUTION_APIKEY || '';
@@ -42,6 +43,7 @@ db.query(`
     processado_em TIMESTAMPTZ
   );
   CREATE INDEX IF NOT EXISTS idx_disparo_itens_fila ON leads_disparo_itens (disparo_id, status, ordem);
+  CREATE INDEX IF NOT EXISTS idx_disparo_itens_empresa ON leads_disparo_itens (empresa_id);
 `).then(() => {
   // Item que estava "enviando" quando a API caiu: NÃO reenvia (pode ter chegado) — marca para conferência
   return db.query(`UPDATE leads_disparo_itens SET status = 'erro', erro = 'Interrompido durante o envio (API reiniciou) — conferir no WhatsApp', processado_em = NOW() WHERE status = 'enviando'`);
@@ -65,14 +67,20 @@ async function chamarEvolution({ numero, mensagem, instancia, media_base64, medi
   return evoData;
 }
 
+// Troca {{empresa}} pelo nome do lead (a tela promete isso no campo da mensagem)
+function aplicarVariaveis(texto, nomeEmpresa) {
+  return String(texto).replace(/\{\{\s*empresa\s*\}\}/gi, nomeEmpresa);
+}
+
 // Processa UM lead do disparo: valida, aplica o anti-reenvio e envia.
 // Retorna { status: 'enviado' | 'pulado' | 'erro', numero, erro }.
 async function processarEmpresa(empresa_id, cfg) {
-  const { mensagem, instancia, media_base64, media_mimetype, label_id } = cfg;
+  const { instancia, media_base64, media_mimetype, label_id } = cfg;
 
   const empRes = await db.query('SELECT * FROM leads_empresas WHERE id = $1', [empresa_id]);
   const empresa = empRes.rows[0];
   if (!empresa) return { status: 'erro', erro: 'Empresa não encontrada' };
+  const mensagem = aplicarVariaveis(cfg.mensagem, empresa.nome || '');
 
   // Normaliza número (tenta whatsapp primeiro, depois telefone)
   const numRaw = (empresa.whatsapp || empresa.telefone || '').replace(/\D/g, '');
@@ -179,6 +187,34 @@ async function tickDisparos() {
 }
 setInterval(tickDisparos, 2000).unref();
 
+// POST /api/prospeccao/mensagens/verificar  { empresa_ids: [] }
+// Confere NA HORA, com os dados atuais do banco, quem pode receber e quem seria pulado (e por quê).
+// Pega o que a tela ainda não sabe: envio feito em outro dia/aba, outro cadastro com o mesmo número, lead já na fila.
+router.post('/verificar', async (req, res) => {
+  try {
+    const ids = [...new Set((req.body.empresa_ids || []).map(Number).filter(Boolean))];
+    if (!ids.length) return res.json({ total: 0, enviar: 0, ids_enviar: [], pulados: [], por_motivo: {} });
+    const r = await db.query(
+      `SELECT e.id, e.nome, k.n8, x.ultimo_envio, (${MOTIVO}) AS motivo
+       FROM leads_empresas e ${LATERAIS}
+       WHERE e.id = ANY($1::int[])
+       ORDER BY array_position($1::int[], e.id)`, [ids]);
+    const vistos = new Set(), ids_enviar = [], pulados = [], por_motivo = {};
+    for (const l of r.rows) {
+      let motivo = l.motivo;
+      // dois cadastros com o mesmo número na mesma seleção: só o primeiro recebe
+      if (!motivo && l.n8 && vistos.has(l.n8)) motivo = 'repetido_na_selecao';
+      if (!motivo) { if (l.n8) vistos.add(l.n8); ids_enviar.push(l.id); continue; }
+      por_motivo[motivo] = (por_motivo[motivo] || 0) + 1;
+      pulados.push({ id: l.id, nome: l.nome, motivo, ultimo_envio: l.ultimo_envio });
+    }
+    res.json({ total: ids.length, enviar: ids_enviar.length, ids_enviar, pulados: pulados.slice(0, 100), por_motivo });
+  } catch (e) {
+    console.error('[mensagens verificar]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/prospeccao/mensagens/enviar
 // Body: { empresa_ids?: [], teste_numero?: string, mensagem: string, instancia?: string, delay_ms?: number, media_base64?: string, media_mimetype?: string, label_id?: string }
 // - teste_numero: envia na hora (não mexe em leads nem histórico)
@@ -197,7 +233,7 @@ router.post('/enviar', async (req, res) => {
       const numRaw = String(teste_numero).replace(/\D/g, '');
       const numero = numRaw.startsWith('55') ? numRaw : `55${numRaw}`;
       try {
-        await chamarEvolution({ numero, mensagem, instancia, media_base64, media_mimetype });
+        await chamarEvolution({ numero, mensagem: aplicarVariaveis(mensagem, 'Empresa Exemplo'), instancia, media_base64, media_mimetype });
         return res.json({ ok: true, enviados: 1, erros: 0, pulados: 0, resultados: [{ empresa_id: 'TESTE', ok: true, numero }] });
       } catch (e) {
         return res.json({ ok: true, enviados: 0, erros: 1, pulados: 0, resultados: [{ empresa_id: 'TESTE', ok: false, erro: e.message }] });
