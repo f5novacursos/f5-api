@@ -1990,7 +1990,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
     const { search } = req.query;
 
     // mapa titulo -> id dos cursos EAD
-    const { rows: eadCursos } = await db.query('SELECT id, titulo FROM ead_cursos');
+    const { rows: eadCursos } = await db.query('SELECT id, titulo, slug, tipo_conteudo FROM ead_cursos');
     const tituloToId = {};
     eadCursos.forEach(c => { tituloToId[c.titulo] = c.id; });
 
