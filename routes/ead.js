@@ -50,6 +50,31 @@ function criarTransporter() {
   });
 }
 
+// Envio por Resend (domínio f5novacursos.com.br). Retorna false se RESEND_API_KEY não existir.
+async function enviarEmailResend({ to, subject, html }) {
+  if (!process.env.RESEND_API_KEY) return false;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM || 'F5 Nova Cursos <nao-responder@f5novacursos.com.br>',
+        to: [to], subject, html
+      }),
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error('Resend ' + response.status + ' ' + detail.slice(0, 200));
+    }
+    return true;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // Normaliza texto: remove acento e baixa caixa (p/ casar nomes de turma/curso)
 function _norm(s) {
   return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -642,25 +667,34 @@ router.post('/auth/esqueci-senha', loginLimiter, async (req, res, next) => {
     );
 
     const link = `${BASE_URL}/ead.html?reset=${token}`;
-    const transporter = criarTransporter();
-
-    if (transporter) {
-      await transporter.sendMail({
-        from: `"F5 Nova Cursos" <${process.env.GMAIL_USER}>`,
-        to: email.trim(),
-        subject: 'Recuperação de senha — F5 Nova Cursos EAD',
-        html: `
+    const assunto = 'Recuperação de senha — F5 Nova Cursos';
+    const corpo = `
           <div style="font-family:sans-serif;max-width:480px;margin:auto">
             <h2 style="color:#0a1628">Olá, ${usuario.nome}!</h2>
-            <p>Recebemos uma solicitação para redefinir sua senha no portal EAD da F5 Nova Cursos.</p>
+            <p>Recebemos uma solicitação para redefinir a senha da sua Conta F5 (vale para o portal EAD e para o Curso de Digitação).</p>
             <p>Clique no botão abaixo para criar uma nova senha. O link expira em <strong>1 hora</strong>.</p>
             <a href="${link}" style="display:inline-block;margin:20px 0;padding:12px 28px;background:#f3ad1c;color:#0a1628;font-weight:bold;border-radius:8px;text-decoration:none">Redefinir minha senha</a>
             <p style="color:#888;font-size:.85rem">Se você não solicitou isso, ignore este e-mail. Sua senha não será alterada.</p>
           </div>
-        `
-      });
-    } else {
-      console.warn('[EAD] GMAIL_USER/GMAIL_PASS não configurados — e-mail de reset não enviado. Token:', token);
+        `;
+    let enviado = false;
+    try {
+      enviado = await enviarEmailResend({ to: email.trim(), subject: assunto, html: corpo });
+    } catch (erroResend) {
+      console.error('[EAD] Falha no Resend ao enviar reset de senha:', erroResend.message);
+    }
+    if (!enviado) {
+      const transporter = criarTransporter();
+      if (transporter) {
+        await transporter.sendMail({
+          from: `"F5 Nova Cursos" <${process.env.GMAIL_USER}>`,
+          to: email.trim(),
+          subject: assunto,
+          html: corpo
+        });
+      } else {
+        console.warn('[EAD] Nem Resend nem GMAIL_USER/GMAIL_PASS disponíveis — e-mail de reset não enviado. Token:', token);
+      }
     }
 
     res.json({ ok: true, msg: 'Se este e-mail estiver cadastrado, você receberá as instruções em breve.' });
