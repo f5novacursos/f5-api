@@ -350,26 +350,29 @@ function hashResetCode(userId, code) {
   return crypto.createHmac('sha256', JWT_SECRET).update(userId + ':' + code).digest('hex');
 }
 
-async function sendResetEmail(to, nome, code) {
+async function sendResetEmail(to, nome, code, opts = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
     const primeiroNome = String(nome || '').split(' ')[0] || 'aluno';
+    const subject = opts.subject || 'Seu código para redefinir a senha — F5 Nova Cursos';
+    const intro = opts.intro || 'Use o código abaixo para criar uma nova senha na sua Conta F5.';
+    const aviso = opts.aviso || 'Se você não pediu isso, ignore este e-mail. Sua senha não será alterada.';
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         from: RESEND_FROM,
         to: [to],
-        subject: 'Seu código para redefinir a senha — F5 Nova Cursos',
+        subject,
         html: `
           <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;color:#0a1628">
             <h2>Olá, ${primeiroNome.replace(/[<>&"]/g, '')}!</h2>
-            <p>Use o código abaixo para criar uma nova senha na sua Conta F5. Ele vale por <strong>${RESET_CODE_MINUTES} minutos</strong>.</p>
+            <p>${intro} Ele vale por <strong>${RESET_CODE_MINUTES} minutos</strong>.</p>
             <p style="font-size:34px;letter-spacing:8px;font-weight:bold;background:#f4f6fa;padding:16px;text-align:center;border-radius:10px">${code}</p>
-            <p style="color:#666;font-size:13px">Se você não pediu isso, ignore este e-mail. Sua senha não será alterada.</p>
+            <p style="color:#666;font-size:13px">${aviso}</p>
           </div>`,
-        text: `Seu código para redefinir a senha da Conta F5: ${code}. Ele vale por ${RESET_CODE_MINUTES} minutos. Se você não pediu isso, ignore este e-mail.`
+        text: `${intro} Código: ${code}. Ele vale por ${RESET_CODE_MINUTES} minutos. ${aviso}`
       }),
       signal: controller.signal
     });
@@ -484,6 +487,178 @@ router.post('/redefinir-senha', authLimiter, async (req, res, next) => {
       token: signToken(user, courses),
       usuario: publicUser(user, courses)
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── Troca de e-mail da Conta F5 (aluno logado) com código enviado ao e-mail NOVO ──
+let emailTableReady = null;
+function ensureEmailChangeTable() {
+  if (!emailTableReady) {
+    emailTableReady = db.query(`
+      CREATE TABLE IF NOT EXISTS conta_f5_email_codigos (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER NOT NULL REFERENCES ead_usuarios(id) ON DELETE CASCADE,
+        novo_email VARCHAR(180) NOT NULL,
+        codigo_hash VARCHAR(64) NOT NULL,
+        expira_em TIMESTAMP NOT NULL,
+        tentativas INTEGER NOT NULL DEFAULT 0,
+        criado_em TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `).catch((error) => { emailTableReady = null; throw error; });
+  }
+  return emailTableReady;
+}
+
+function alunoAuth(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!token || !JWT_SECRET) return res.status(401).json({ error: 'Entre na sua conta para continuar.' });
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (!payload || payload.role === 'admin' || !payload.id) return res.status(403).json({ error: 'Acesso não permitido.' });
+    req.aluno = payload;
+    next();
+  } catch (_) {
+    res.status(401).json({ error: 'Sua sessão expirou. Entre novamente.' });
+  }
+}
+
+// E-mail já usado por outra conta (EAD ou Digitação)?
+async function emailEmUso(email, usuarioId) {
+  const ead = await db.query(
+    'SELECT 1 FROM ead_usuarios WHERE LOWER(email) = $1 AND deletado_em IS NULL AND id <> $2 LIMIT 1',
+    [email, usuarioId]
+  );
+  if (ead.rows.length) return true;
+  const dig = await db.query(
+    'SELECT 1 FROM digitacao_usuarios WHERE LOWER(email) = $1 AND ead_usuario_id IS DISTINCT FROM $2 LIMIT 1',
+    [email, usuarioId]
+  ).catch(() => ({ rows: [] }));
+  return dig.rows.length > 0;
+}
+
+function hashEmailCode(userId, novoEmail, code) {
+  return crypto.createHmac('sha256', JWT_SECRET).update('email:' + userId + ':' + novoEmail + ':' + code).digest('hex');
+}
+
+// POST /api/conta-f5/email/solicitar — envia código para o e-mail novo
+router.post('/email/solicitar', authLimiter, alunoAuth, async (req, res, next) => {
+  try {
+    if (!RESEND_API_KEY) return res.status(503).json({ error: 'Troca de e-mail ainda não está disponível. Fale com a F5 pelo WhatsApp.' });
+    const novoEmail = normalizeEmail(req.body.novo_email);
+    const senha = String(req.body.senha || '');
+    if (!validEmail(novoEmail) || novoEmail.length > 180) return res.status(400).json({ error: 'Informe um e-mail válido.' });
+
+    await ensureEmailChangeTable();
+    const found = await db.query('SELECT * FROM ead_usuarios WHERE id = $1 AND deletado_em IS NULL', [req.aluno.id]);
+    if (!found.rows.length) return res.status(404).json({ error: 'Conta não encontrada.' });
+    const user = found.rows[0];
+    if (user.perfil === 'kids') return res.status(400).json({ error: 'Contas Kids usam o e-mail do responsável. Peça ajuda ao professor.' });
+    if (normalizeEmail(user.email) === novoEmail) return res.status(400).json({ error: 'Esse já é o e-mail da sua conta.' });
+
+    // Quem tem senha precisa confirmá-la. Conta criada só com Google já está autenticada pelo Google.
+    if (user.senha_hash) {
+      if (!senha || !(await bcrypt.compare(senha, user.senha_hash))) {
+        return res.status(403).json({ error: 'Senha atual incorreta.' });
+      }
+    }
+    if (await emailEmUso(novoEmail, user.id)) {
+      return res.status(409).json({ error: 'Este e-mail já está em uso por outra conta.' });
+    }
+
+    const recent = await db.query(
+      `SELECT 1 FROM conta_f5_email_codigos
+       WHERE usuario_id = $1 AND criado_em > NOW() - ($2 || ' seconds')::interval`,
+      [user.id, String(RESET_RESEND_SECONDS)]
+    );
+    if (recent.rows.length) return res.status(429).json({ error: 'Aguarde um minuto para pedir um novo código.' });
+
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    await db.query('DELETE FROM conta_f5_email_codigos WHERE usuario_id = $1', [user.id]);
+    await db.query(
+      `INSERT INTO conta_f5_email_codigos (usuario_id, novo_email, codigo_hash, expira_em)
+       VALUES ($1, $2, $3, NOW() + ($4 || ' minutes')::interval)`,
+      [user.id, novoEmail, hashEmailCode(user.id, novoEmail, code), String(RESET_CODE_MINUTES)]
+    );
+    try {
+      await sendResetEmail(novoEmail, user.nome, code, {
+        subject: 'Confirme seu novo e-mail — F5 Nova Cursos',
+        intro: 'Use o código abaixo para confirmar este e-mail como o novo e-mail da sua Conta F5.',
+        aviso: 'Se você não pediu isso, ignore este e-mail. Nada será alterado.'
+      });
+    } catch (error) {
+      await db.query('DELETE FROM conta_f5_email_codigos WHERE usuario_id = $1', [user.id]).catch(() => {});
+      console.error('[CONTA F5] Falha ao enviar código de troca de e-mail:', error.message);
+      return res.status(502).json({ error: 'Não foi possível enviar o e-mail agora. Confira se digitou certo e tente de novo.' });
+    }
+    res.json({ ok: true, msg: 'Enviamos um código de 6 dígitos para ' + novoEmail + '. Confira também o spam.' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/conta-f5/email/confirmar — valida o código e troca o e-mail
+router.post('/email/confirmar', authLimiter, alunoAuth, async (req, res, next) => {
+  try {
+    const code = String(req.body.codigo || '').replace(/\D/g, '');
+    if (code.length !== 6) return res.status(400).json({ error: 'Digite o código de 6 dígitos que chegou no e-mail novo.' });
+
+    await ensureEmailChangeTable();
+    const invalid = { error: 'Código inválido ou expirado. Peça um novo código.' };
+    const stored = await db.query(
+      `SELECT * FROM conta_f5_email_codigos
+       WHERE usuario_id = $1 AND expira_em > NOW() ORDER BY id DESC LIMIT 1`,
+      [req.aluno.id]
+    );
+    if (!stored.rows.length) return res.status(400).json(invalid);
+    const record = stored.rows[0];
+    if (record.tentativas >= RESET_MAX_ATTEMPTS) {
+      return res.status(429).json({ error: 'Muitas tentativas erradas. Peça um novo código.' });
+    }
+
+    const expected = Buffer.from(record.codigo_hash, 'hex');
+    const received = Buffer.from(hashEmailCode(record.usuario_id, record.novo_email, code), 'hex');
+    if (expected.length !== received.length || !crypto.timingSafeEqual(expected, received)) {
+      await db.query('UPDATE conta_f5_email_codigos SET tentativas = tentativas + 1 WHERE id = $1', [record.id]);
+      return res.status(400).json(invalid);
+    }
+
+    if (await emailEmUso(record.novo_email, record.usuario_id)) {
+      await db.query('DELETE FROM conta_f5_email_codigos WHERE usuario_id = $1', [record.usuario_id]);
+      return res.status(409).json({ error: 'Este e-mail passou a ser usado por outra conta.' });
+    }
+
+    const before = await db.query('SELECT email FROM ead_usuarios WHERE id = $1', [record.usuario_id]);
+    const emailAntigo = before.rows[0] ? before.rows[0].email : null;
+    const updated = await db.query(
+      'UPDATE ead_usuarios SET email = $1 WHERE id = $2 AND deletado_em IS NULL RETURNING *',
+      [record.novo_email, record.usuario_id]
+    );
+    if (!updated.rows.length) return res.status(404).json({ error: 'Conta não encontrada.' });
+    await db.query('UPDATE digitacao_usuarios SET email = $1 WHERE ead_usuario_id = $2', [record.novo_email, record.usuario_id]).catch(() => {});
+    await db.query('DELETE FROM conta_f5_email_codigos WHERE usuario_id = $1', [record.usuario_id]);
+    await db.query('DELETE FROM conta_f5_reset_codigos WHERE usuario_id = $1', [record.usuario_id]).catch(() => {});
+
+    // Avisa o e-mail antigo (melhor esforço): protege contra troca indevida.
+    if (emailAntigo && RESEND_API_KEY) {
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: RESEND_FROM,
+          to: [emailAntigo],
+          subject: 'O e-mail da sua Conta F5 foi alterado',
+          html: '<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;color:#0a1628"><p>O e-mail da sua Conta F5 foi alterado para <strong>' +
+            record.novo_email.replace(/[<>&"]/g, '') + '</strong>.</p><p style="color:#666;font-size:13px">Se não foi você, fale com a F5 pelo WhatsApp.</p></div>'
+        })
+      }).catch(() => {});
+    }
+
+    const user = updated.rows[0];
+    const courses = await cursosAtivos(user.id);
+    res.json({ ok: true, msg: 'E-mail alterado com sucesso!', usuario: publicUser(user, courses) });
   } catch (error) {
     next(error);
   }

@@ -2358,6 +2358,50 @@ router.put('/alunos/web/:id/responsavel', eadAdminMiddleware, async (req, res, n
   } catch(e) { next(e); }
 });
 
+// PUT /api/ead/alunos/web/:id/email — corrige o e-mail de login da conta (admin), p.ex. cadastro com e-mail errado
+router.put('/alunos/web/:id/email', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id);
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 180) {
+      return res.status(400).json({ error: 'Informe um e-mail válido.' });
+    }
+
+    const { rows } = await db.query(
+      'SELECT id, nome, email, perfil FROM ead_usuarios WHERE id = $1 AND deletado_em IS NULL',
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Aluno não encontrado' });
+    const aluno = rows[0];
+    if (aluno.perfil === 'kids') {
+      return res.status(400).json({ error: 'Contas Kids não têm e-mail de login. Use o campo "E-mail do responsável".' });
+    }
+
+    const emUsoEad = await db.query(
+      'SELECT 1 FROM ead_usuarios WHERE LOWER(email) = $1 AND deletado_em IS NULL AND id <> $2 LIMIT 1',
+      [email, id]
+    );
+    const emUsoDig = await db.query(
+      'SELECT 1 FROM digitacao_usuarios WHERE LOWER(email) = $1 AND ead_usuario_id IS DISTINCT FROM $2 LIMIT 1',
+      [email, id]
+    ).catch(() => ({ rows: [] }));
+    if (emUsoEad.rows.length || emUsoDig.rows.length) {
+      return res.status(409).json({ error: 'Este e-mail já está em uso por outra conta.' });
+    }
+
+    await db.query('UPDATE ead_usuarios SET email = $1 WHERE id = $2', [email, id]);
+    await db.query('UPDATE digitacao_usuarios SET email = $1 WHERE ead_usuario_id = $2', [email, id]).catch(() => {});
+    // Códigos pendentes pertenciam ao e-mail antigo
+    await db.query('DELETE FROM conta_f5_reset_codigos WHERE usuario_id = $1', [id]).catch(() => {});
+    await db.query('DELETE FROM conta_f5_email_codigos WHERE usuario_id = $1', [id]).catch(() => {});
+    await db.query('DELETE FROM ead_reset_tokens WHERE usuario_id = $1', [id]).catch(() => {});
+    console.log(`[EAD] Admin ${req.user.id || req.user.email || '?'} corrigiu e-mail do aluno ${id}: ${aluno.email} -> ${email}`);
+
+    res.json({ ok: true, email, mensagem: 'E-mail da conta corrigido com sucesso!' });
+  } catch(e) { next(e); }
+});
+
 // POST /api/ead/alunos/web/:id/enviar-senha-whatsapp — envia nova senha diretamente para o WhatsApp do responsável (admin)
 router.post('/alunos/web/:id/enviar-senha-whatsapp', eadAdminMiddleware, async (req, res, next) => {
   try {
