@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
@@ -313,6 +314,174 @@ router.post('/kids/recuperar-senha', authLimiter, async (req, res, next) => {
       ok: true,
       msg: 'Senha alterada com sucesso! Entrando...',
       token,
+      usuario: publicUser(user, courses)
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── Recuperação de senha da Conta F5 (adulto) por código enviado via Resend ──
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_FROM = process.env.RESEND_FROM || 'F5 Nova Cursos <nao-responder@f5novacursos.com.br>';
+const RESET_CODE_MINUTES = 15;
+const RESET_MAX_ATTEMPTS = 5;
+const RESET_RESEND_SECONDS = 60;
+
+let resetTableReady = null;
+function ensureResetTable() {
+  if (!resetTableReady) {
+    resetTableReady = db.query(`
+      CREATE TABLE IF NOT EXISTS conta_f5_reset_codigos (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER NOT NULL REFERENCES ead_usuarios(id) ON DELETE CASCADE,
+        codigo_hash VARCHAR(64) NOT NULL,
+        expira_em TIMESTAMP NOT NULL,
+        tentativas INTEGER NOT NULL DEFAULT 0,
+        usado BOOLEAN NOT NULL DEFAULT FALSE,
+        criado_em TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `).catch((error) => { resetTableReady = null; throw error; });
+  }
+  return resetTableReady;
+}
+
+function hashResetCode(userId, code) {
+  return crypto.createHmac('sha256', JWT_SECRET).update(userId + ':' + code).digest('hex');
+}
+
+async function sendResetEmail(to, nome, code) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const primeiroNome = String(nome || '').split(' ')[0] || 'aluno';
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: RESEND_FROM,
+        to: [to],
+        subject: 'Seu código para redefinir a senha — F5 Nova Cursos',
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;color:#0a1628">
+            <h2>Olá, ${primeiroNome.replace(/[<>&"]/g, '')}!</h2>
+            <p>Use o código abaixo para criar uma nova senha na sua Conta F5. Ele vale por <strong>${RESET_CODE_MINUTES} minutos</strong>.</p>
+            <p style="font-size:34px;letter-spacing:8px;font-weight:bold;background:#f4f6fa;padding:16px;text-align:center;border-radius:10px">${code}</p>
+            <p style="color:#666;font-size:13px">Se você não pediu isso, ignore este e-mail. Sua senha não será alterada.</p>
+          </div>`,
+        text: `Seu código para redefinir a senha da Conta F5: ${code}. Ele vale por ${RESET_CODE_MINUTES} minutos. Se você não pediu isso, ignore este e-mail.`
+      }),
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error('Resend ' + response.status + ' ' + detail.slice(0, 200));
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// POST /api/conta-f5/esqueci-senha — envia um código de 6 dígitos para o e-mail da Conta F5
+router.post('/esqueci-senha', authLimiter, async (req, res, next) => {
+  const generic = { ok: true, msg: 'Se este e-mail tiver uma Conta F5, enviamos um código de 6 dígitos. Confira também o spam.' };
+  try {
+    if (!JWT_SECRET || !RESEND_API_KEY) {
+      return res.status(503).json({ error: 'Recuperação por e-mail ainda não está disponível. Fale com a F5 pelo WhatsApp.' });
+    }
+    const email = normalizeEmail(req.body.email);
+    if (!validEmail(email)) return res.status(400).json({ error: 'Informe um e-mail válido.' });
+
+    await ensureResetTable();
+    const { rows } = await db.query(
+      `SELECT id, nome, email FROM ead_usuarios
+       WHERE LOWER(email) = $1 AND deletado_em IS NULL AND COALESCE(perfil, 'adulto') <> 'kids'
+       LIMIT 1`,
+      [email]
+    );
+    if (!rows.length) return res.json(generic);
+    const user = rows[0];
+
+    const recent = await db.query(
+      `SELECT 1 FROM conta_f5_reset_codigos
+       WHERE usuario_id = $1 AND criado_em > NOW() - ($2 || ' seconds')::interval`,
+      [user.id, String(RESET_RESEND_SECONDS)]
+    );
+    if (recent.rows.length) return res.json(generic);
+
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    await db.query('DELETE FROM conta_f5_reset_codigos WHERE usuario_id = $1', [user.id]);
+    await db.query(
+      `INSERT INTO conta_f5_reset_codigos (usuario_id, codigo_hash, expira_em)
+       VALUES ($1, $2, NOW() + ($3 || ' minutes')::interval)`,
+      [user.id, hashResetCode(user.id, code), String(RESET_CODE_MINUTES)]
+    );
+    try {
+      await sendResetEmail(user.email, user.nome, code);
+    } catch (error) {
+      await db.query('DELETE FROM conta_f5_reset_codigos WHERE usuario_id = $1', [user.id]).catch(() => {});
+      console.error('[CONTA F5] Falha ao enviar e-mail de recuperação:', error.message);
+      return res.status(502).json({ error: 'Não foi possível enviar o e-mail agora. Tente novamente em instantes.' });
+    }
+    res.json(generic);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/conta-f5/redefinir-senha — valida o código e define a nova senha
+router.post('/redefinir-senha', authLimiter, async (req, res, next) => {
+  try {
+    if (!JWT_SECRET) return res.status(503).json({ error: 'Recuperação ainda não configurada no servidor.' });
+    const email = normalizeEmail(req.body.email);
+    const code = String(req.body.codigo || '').replace(/\D/g, '');
+    const novaSenha = String(req.body.nova_senha || '');
+    if (!validEmail(email)) return res.status(400).json({ error: 'Informe um e-mail válido.' });
+    if (code.length !== 6) return res.status(400).json({ error: 'Digite o código de 6 dígitos que chegou no e-mail.' });
+    if (novaSenha.length < 8 || novaSenha.length > 100) {
+      return res.status(400).json({ error: 'A nova senha precisa ter pelo menos 8 caracteres.' });
+    }
+
+    await ensureResetTable();
+    const invalid = { error: 'Código inválido ou expirado. Peça um novo código.' };
+    const found = await db.query(
+      `SELECT * FROM ead_usuarios
+       WHERE LOWER(email) = $1 AND deletado_em IS NULL AND COALESCE(perfil, 'adulto') <> 'kids'
+       LIMIT 1`,
+      [email]
+    );
+    if (!found.rows.length) return res.status(400).json(invalid);
+    const user = found.rows[0];
+
+    const stored = await db.query(
+      `SELECT id, codigo_hash, tentativas FROM conta_f5_reset_codigos
+       WHERE usuario_id = $1 AND usado = FALSE AND expira_em > NOW()
+       ORDER BY id DESC LIMIT 1`,
+      [user.id]
+    );
+    if (!stored.rows.length) return res.status(400).json(invalid);
+    const record = stored.rows[0];
+    if (record.tentativas >= RESET_MAX_ATTEMPTS) {
+      return res.status(429).json({ error: 'Muitas tentativas erradas. Peça um novo código.' });
+    }
+
+    const expected = Buffer.from(record.codigo_hash, 'hex');
+    const received = Buffer.from(hashResetCode(user.id, code), 'hex');
+    if (expected.length !== received.length || !crypto.timingSafeEqual(expected, received)) {
+      await db.query('UPDATE conta_f5_reset_codigos SET tentativas = tentativas + 1 WHERE id = $1', [record.id]);
+      return res.status(400).json(invalid);
+    }
+
+    const hash = await bcrypt.hash(novaSenha, 12);
+    await db.query('UPDATE ead_usuarios SET senha_hash = $1 WHERE id = $2', [hash, user.id]);
+    await db.query('UPDATE digitacao_usuarios SET senha_hash = $1 WHERE ead_usuario_id = $2', [hash, user.id]).catch(() => {});
+    await db.query('DELETE FROM conta_f5_reset_codigos WHERE usuario_id = $1', [user.id]);
+
+    const courses = await cursosAtivos(user.id);
+    res.json({
+      ok: true,
+      msg: 'Senha alterada com sucesso! Entrando...',
+      token: signToken(user, courses),
       usuario: publicUser(user, courses)
     });
   } catch (error) {
