@@ -1,15 +1,16 @@
 {
   "versao": "0.9.29",
-  "sha256": "c1ff7b6f77c1806c153151f55c98576d27095867efa7b00a10beea0d7f02cd6f",
-  "tamanho": 2085568,
+  "sha256": "b434bdfa199aec6c96a6b89a35901e3080492a446631574312bee16c388d0e20",
+  "tamanho": 2086440,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-14T23:04:02.471Z",
+  "publicadoEm": "2026-11-14T23:06:40.877Z",
   "novidades": [
     {
       "versao": "0.9.29",
       "titulo": "Seu próprio padrão da mesa",
       "itens": [
         "Padrão da mesa: nova lista \"Programas do meu padrão\" com programas e sites mais usados em cursos (Photoshop, Illustrator, InDesign, After Effects, Premiere, CapCut, Outlook, Teams, Google Docs/Planilhas/Apresentações, VS Code, Notepad++, Bloco de Notas, Calculadora e muitos outros). É só marcar.",
+        "Instalar programas (cadeado fechado): se um instalador foi aberto com permissão de administrador e o F5 Sala não conseguir fechá-lo, o card do aluno agora avisa isso com todas as letras.",
         "Dá para adicionar outro programa digitando o nome e, se quiser, o caminho do .exe. A sua escolha fica salva no seu perfil de professor."
       ]
     }
