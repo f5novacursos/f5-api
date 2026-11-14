@@ -1,19 +1,16 @@
 {
-  "versao": "0.9.26",
-  "sha256": "082fa22ca827e6e6f7ee6c9247197851fc57e447bdd04522b67014ccd6f25c26",
-  "tamanho": 2050916,
+  "versao": "0.9.27",
+  "sha256": "a98bd7ed2cb2607a0c48e65521d435dd1e8ac2ecc6027c7bff13e6d72da326c2",
+  "tamanho": 2052815,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-14T21:46:42.137Z",
+  "publicadoEm": "2026-11-14T22:06:46.525Z",
   "novidades": [
     {
-      "versao": "0.9.26",
-      "titulo": "Teste da atualização automática",
+      "versao": "0.9.27",
+      "titulo": "Ajustes de uso",
       "itens": [
-        "Versão de teste: serve para conferir que o painel e os alunos se atualizam sozinhos, sem erro, com o atualizador novo.",
-        "Enviar arquivo: nova opção \"Imagens\" (pasta Imagens do aluno), bom para mandar 5 ou 10 fotos de treino de uma vez. Vale também no Recolher.",
-        "Novo botão \"Esvaziar a Lixeira dos alunos\", e a opção de esvaziar a Lixeira junto com a limpeza dos Downloads e no Fim da aula.",
-        "Papel de parede: a imagem é convertida para PNG pelo próprio programa antes de aplicar. Em alguns computadores o Windows não lia JPG e o fundo ficava em cor sólida preta.",
-        "Papel de parede e Organizar ícones agora mostram na mensagem do painel o que o Windows do aluno informa (usuário, sessão, estrutura da área de trabalho), para descobrir por que o fundo fica em cor sólida."
+        "Envios: novo botão \"Limpar lista\" para tirar da tela os envios já entregues.",
+        "Organizar ícones: se o Windows do aluno esconde a lista de ícones do lugar de costume, o programa agora procura em todas as janelas da área de trabalho."
       ]
     }
   ]
