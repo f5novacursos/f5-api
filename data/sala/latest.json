@@ -1,21 +1,16 @@
 {
-  "versao": "0.9.23",
-  "sha256": "548e90cf7c4c37e4179a82f910d0aafc769d0bd210ab6906bc42608b44a98f35",
-  "tamanho": 2037345,
+  "versao": "0.9.24",
+  "sha256": "9c66c7e225f234444f448f658b9cd1966f59077a88305d94f97f693bc5824e74",
+  "tamanho": 2041332,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-14T20:57:33.701Z",
+  "publicadoEm": "2026-11-14T21:14:56.196Z",
   "novidades": [
     {
-      "versao": "0.9.23",
-      "titulo": "Atualização pelo próprio programa e Ajustes organizado",
+      "versao": "0.9.24",
+      "titulo": "Aviso de nova versão e correção na atualização dos alunos",
       "itens": [
-        "Botão \"Atualizar\" em Ajustes → Programa: o professor se atualiza sozinho, sem baixar instalador. Os alunos se atualizam em seguida, a partir do professor.",
-        "Ajustes reorganizado em abas: Sala, Modos de aula, Meus dados e Programa.",
-        "Botão direito no cartão do aluno: Renomear, Ver e controlar e Print.",
-        "Os alertas de \"aluno saiu\" e \"já voltou\" agora somem sozinhos.",
-        "Barra do aluno sem o botão de mensagem: a mensagem vai pelo botão Ajuda.",
-        "Aplicativos → \"Em uso agora na sala\": quadradinhos pequenos com a tela e o nome de cada aluno, lado a lado.",
-        "Papel de parede: o programa agora força o modo \"Imagem\" e confere se o Windows desenhou (antes podia ficar cor sólida preta)."
+        "Quando houver versão nova, aparece um cartão no canto: \"Nova versão disponível — Atualizar agora / Depois\". O programa confere de hora em hora, não só ao abrir.",
+        "Início → \"Atualização dos alunos\" agora mostra a versão dos alunos que já estavam conectados quando você abriu o painel, e atualiza sozinho quem estiver com versão antiga."
       ]
     }
   ]
