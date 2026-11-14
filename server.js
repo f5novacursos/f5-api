@@ -38,6 +38,7 @@ app.use('/api/financeiro',  adminAuth, require('./routes/financeiro'));
 app.use('/api/contato',     require('./routes/contato'));
 app.use('/api/ead',         require('./routes/ead'));
 app.use('/api/conta-f5',    require('./routes/contaF5'));
+app.use('/api/sala',        require('./routes/salaBackup'));
 app.use('/api/digitacao',   require('./routes/digitacao'));
 app.use('/api/lixeira',     adminAuth, require('./routes/lixeira'));
 app.use('/api/debounce',    require('./routes/debounce'));
