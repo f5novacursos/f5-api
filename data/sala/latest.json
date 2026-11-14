@@ -1,17 +1,18 @@
 {
-  "versao": "0.9.29",
-  "sha256": "b434bdfa199aec6c96a6b89a35901e3080492a446631574312bee16c388d0e20",
-  "tamanho": 2086440,
+  "versao": "0.9.30",
+  "sha256": "9c2d5cdbdef4ea7ff48d35911d39dadb675aa95f7713676e3bbd36fc5bba5769",
+  "tamanho": 2101334,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-14T23:06:40.877Z",
+  "publicadoEm": "2026-11-14T23:41:45.159Z",
   "novidades": [
     {
-      "versao": "0.9.29",
-      "titulo": "Seu próprio padrão da mesa",
+      "versao": "0.9.30",
+      "titulo": "Gravações com lista e área",
       "itens": [
-        "Padrão da mesa: nova lista \"Programas do meu padrão\" com programas e sites mais usados em cursos (Photoshop, Illustrator, InDesign, After Effects, Premiere, CapCut, Outlook, Teams, Google Docs/Planilhas/Apresentações, VS Code, Notepad++, Bloco de Notas, Calculadora e muitos outros). É só marcar.",
-        "Instalar programas (cadeado fechado): se um instalador foi aberto com permissão de administrador e o F5 Sala não conseguir fechá-lo, o card do aluno agora avisa isso com todas as letras.",
-        "Dá para adicionar outro programa digitando o nome e, se quiser, o caminho do .exe. A sua escolha fica salva no seu perfil de professor."
+        "Ao parar a gravação, o painel leva você para Ao vivo → \"Minhas gravações\", com a nova no topo. Dali dá para Abrir (assistir), mostrar na pasta e Apagar (vai para a Lixeira do Windows).",
+        "Espelhar a tela: a imagem para os alunos voltou a ficar nítida (1600x900, prioridade para o texto). Ao começar a espelhar, o painel se minimiza sozinho e aparece um aviso \"● Espelhando\" com o botão Parar no topo da tela.",
+        "Barra do aluno: corrigido o caso em que, ao desligar e ligar a barra de novo, ela demorava minutos para voltar (ou nem voltava).",
+        "Gravar só uma parte da tela: botão \"Escolher área da tela\" (arraste um retângulo). Bom para gravar uma janela pequena. \"Tela inteira\" volta ao normal."
       ]
     }
   ]
