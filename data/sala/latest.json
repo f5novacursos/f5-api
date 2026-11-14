@@ -1,16 +1,16 @@
 {
-  "versao": "0.9.28",
-  "sha256": "80b58cc48e4a5b7018ce21a3c9556b46b152b7d43cb41bbd3f6a1a2c6bea68e0",
-  "tamanho": 2069084,
+  "versao": "0.9.29",
+  "sha256": "c1ff7b6f77c1806c153151f55c98576d27095867efa7b00a10beea0d7f02cd6f",
+  "tamanho": 2085568,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-14T22:38:28.569Z",
+  "publicadoEm": "2026-11-14T23:04:02.471Z",
   "novidades": [
     {
-      "versao": "0.9.28",
-      "titulo": "Padrão da mesa",
+      "versao": "0.9.29",
+      "titulo": "Seu próprio padrão da mesa",
       "itens": [
-        "Novo \"Padrão da mesa\" (Mesa do aluno): deixa a área de trabalho só com pasta do usuário, Este Computador, Lixeira, Chrome, Word, Excel e PowerPoint. O que estiver lá é movido para Documentos → Guardados da Área de Trabalho (nada é apagado).",
-        "Opção de aplicar sozinho sempre que o computador do aluno ligar. Pastas \"Aula...\" e os atalhos que você mandou pelo F5 Sala ficam como estão."
+        "Padrão da mesa: nova lista \"Programas do meu padrão\" com programas e sites mais usados em cursos (Photoshop, Illustrator, InDesign, After Effects, Premiere, CapCut, Outlook, Teams, Google Docs/Planilhas/Apresentações, VS Code, Notepad++, Bloco de Notas, Calculadora e muitos outros). É só marcar.",
+        "Dá para adicionar outro programa digitando o nome e, se quiser, o caminho do .exe. A sua escolha fica salva no seu perfil de professor."
       ]
     }
   ]
