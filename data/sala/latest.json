@@ -1,20 +1,16 @@
 {
-  "versao": "0.9.27",
-  "sha256": "0c0fde519359806b65fb20bf5cc6a260257711a09d656e6635713a41a1375ed7",
-  "tamanho": 2055228,
+  "versao": "0.9.28",
+  "sha256": "80b58cc48e4a5b7018ce21a3c9556b46b152b7d43cb41bbd3f6a1a2c6bea68e0",
+  "tamanho": 2069084,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-14T22:13:36.393Z",
+  "publicadoEm": "2026-11-14T22:38:28.569Z",
   "novidades": [
     {
-      "versao": "0.9.27",
-      "titulo": "Ajustes de uso",
+      "versao": "0.9.28",
+      "titulo": "Padrão da mesa",
       "itens": [
-        "Sites: ao adicionar um endereço, agora dá para escolher \"Adicionar bloqueado\" ou \"Adicionar liberado\", sem precisar passar de uma coluna para a outra.",
-        "Telegram (programa) entra bloqueado por padrão na lista de aplicativos.",
-        "Em uso agora: o botão \"Bloquear de novo\" virou \"Bloquear este\" e agora avisa quando o bloqueio de aplicativos está desligado (nesse caso nada é fechado nos alunos).",
-        "Instalar programas (cadeado fechado): se o instalador não fechar de primeira, o programa do aluno insiste até fechar, em vez de tentar uma vez só.",
-        "Envios: novo botão \"Limpar lista\" para tirar da tela os envios já entregues.",
-        "Organizar ícones: se o Windows do aluno esconde a lista de ícones do lugar de costume, o programa agora procura em todas as janelas da área de trabalho."
+        "Novo \"Padrão da mesa\" (Mesa do aluno): deixa a área de trabalho só com pasta do usuário, Este Computador, Lixeira, Chrome, Word, Excel e PowerPoint. O que estiver lá é movido para Documentos → Guardados da Área de Trabalho (nada é apagado).",
+        "Opção de aplicar sozinho sempre que o computador do aluno ligar. Pastas \"Aula...\" e os atalhos que você mandou pelo F5 Sala ficam como estão."
       ]
     }
   ]
