@@ -1,16 +1,19 @@
 {
-  "versao": "0.9.24",
-  "sha256": "9c66c7e225f234444f448f658b9cd1966f59077a88305d94f97f693bc5824e74",
-  "tamanho": 2041332,
+  "versao": "0.9.26",
+  "sha256": "082fa22ca827e6e6f7ee6c9247197851fc57e447bdd04522b67014ccd6f25c26",
+  "tamanho": 2050916,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-14T21:14:56.196Z",
+  "publicadoEm": "2026-11-14T21:46:42.137Z",
   "novidades": [
     {
-      "versao": "0.9.24",
-      "titulo": "Aviso de nova versão e correção na atualização dos alunos",
+      "versao": "0.9.26",
+      "titulo": "Teste da atualização automática",
       "itens": [
-        "Quando houver versão nova, aparece um cartão no canto: \"Nova versão disponível — Atualizar agora / Depois\". O programa confere de hora em hora, não só ao abrir.",
-        "Início → \"Atualização dos alunos\" agora mostra a versão dos alunos que já estavam conectados quando você abriu o painel, e atualiza sozinho quem estiver com versão antiga."
+        "Versão de teste: serve para conferir que o painel e os alunos se atualizam sozinhos, sem erro, com o atualizador novo.",
+        "Enviar arquivo: nova opção \"Imagens\" (pasta Imagens do aluno), bom para mandar 5 ou 10 fotos de treino de uma vez. Vale também no Recolher.",
+        "Novo botão \"Esvaziar a Lixeira dos alunos\", e a opção de esvaziar a Lixeira junto com a limpeza dos Downloads e no Fim da aula.",
+        "Papel de parede: a imagem é convertida para PNG pelo próprio programa antes de aplicar. Em alguns computadores o Windows não lia JPG e o fundo ficava em cor sólida preta.",
+        "Papel de parede e Organizar ícones agora mostram na mensagem do painel o que o Windows do aluno informa (usuário, sessão, estrutura da área de trabalho), para descobrir por que o fundo fica em cor sólida."
       ]
     }
   ]
