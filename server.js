@@ -43,6 +43,7 @@ app.use('/api/sala',        require('./routes/salaVersao'));
 app.use('/api/sala/licenca', require('./routes/salaLicenca'));
 app.use('/api/sala/pagar',   require('./routes/salaPagamento'));
 app.use('/api/sala/suporte', require('./routes/salaSuporte'));
+app.use('/api/sala/loja',    require('./routes/salaLoja'));
 app.use('/api/admin/sala',   adminAuth, require('./routes/salaAdmin'));
 app.use('/api/digitacao',   require('./routes/digitacao'));
 app.use('/api/lixeira',     adminAuth, require('./routes/lixeira'));

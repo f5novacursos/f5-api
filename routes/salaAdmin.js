@@ -119,12 +119,7 @@ router.get('/licencas/:id', wrap(async (req, res) => {
   });
 }));
 async function enviarChave(lic, cl) {
-  const download = (process.env.SALA_PUBLIC_URL || 'https://api.f5novacursos.com.br') + '/api/sala/licenca/download';
-  return L.enviarEmail({
-    to: cl.email, subject: 'Sua chave do F5 Sala',
-    html: L.caixaEmail(`Olá, ${L.escapar((cl.responsavel || '').split(' ')[0] || 'tudo bem')}!`, `<p>Chave do F5 Sala da <b>${L.escapar(cl.escola)}</b> (sala <b>${L.escapar(lic.sala)}</b>):</p><p style="font-size:26px;font-weight:700;letter-spacing:2px;margin:12px 0">${lic.chave}</p><p><b>1.</b> <a href="${download}">Baixe o F5 Sala</a> e instale no computador do professor.<br><b>2.</b> Ao abrir, digite a chave acima.<br><b>3.</b> Instale também no computador de cada aluno e escolha "Aluno".</p>`),
-    text: `Chave do F5 Sala (${lic.sala}): ${lic.chave}. Baixe em ${download}`,
-  });
+  return require('../lib/salaEmails').entrega({ cliente: cl, lic, demo: lic.plano === 'demo', vencimento: lic.vitalicia ? null : (lic.proximo_vencimento ? L.diaISO(lic.proximo_vencimento) : null) });
 }
 router.post('/licencas/:id/enviar-chave', wrap(async (req, res) => {
   const l = (await db.query(`SELECT l.*, c.escola, c.responsavel, c.email FROM sala_licencas l JOIN sala_clientes c ON c.id = l.cliente_id WHERE l.id = $1`, [num(req.params.id)])).rows[0];

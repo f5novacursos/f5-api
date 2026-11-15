@@ -171,11 +171,7 @@ router.post('/demo/confirmar', async (req, res) => {
       [cl.rows[0].id, chave, novoToken(), 'Demonstração', L.DEMO_ALUNOS, L.somarDias(new Date(), L.DEMO_DIAS)]);
   }
   const download = (process.env.SALA_PUBLIC_URL || 'https://api.f5novacursos.com.br') + '/api/sala/licenca/download';
-  await L.enviarEmail({
-    to: email, subject: 'Sua chave de demonstração do F5 Sala',
-    html: L.caixaEmail('Tudo pronto para testar o F5 Sala', `<p>Sua chave de demonstração (válida por ${L.DEMO_DIAS} dias, com 1 aluno):</p><p style="font-size:26px;font-weight:700;letter-spacing:2px;margin:12px 0">${chave}</p><p><b>1.</b> <a href="${download}">Baixe o F5 Sala</a> e instale no computador do professor.<br><b>2.</b> Ao abrir, digite a chave acima.<br><b>3.</b> Instale também o F5 Sala no computador de um aluno e escolha "Aluno".</p><p>Qualquer dúvida é só responder pelo próprio programa (Suporte).</p>`),
-    text: `Chave de demonstração do F5 Sala: ${chave}. Baixe em ${download}`,
-  });
+  await require('../lib/salaEmails').entrega({ cliente: { escola: texto(d.escola, 160), email, responsavel: texto(d.responsavel, 160) }, lic: { chave, sala: 'Demonstração' }, demo: true });
   res.json({ ok: true, chave, download });
 });
 
