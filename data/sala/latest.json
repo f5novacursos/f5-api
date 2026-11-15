@@ -1,18 +1,19 @@
 {
-  "versao": "0.9.30",
-  "sha256": "9c2d5cdbdef4ea7ff48d35911d39dadb675aa95f7713676e3bbd36fc5bba5769",
-  "tamanho": 2101334,
+  "versao": "0.9.31",
+  "sha256": "608e76c80bf4033cdeae158772cdce711d5a89ae659d71d6cc5e1c26c426f236",
+  "tamanho": 2109239,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-14T23:41:45.159Z",
+  "publicadoEm": "2026-11-15T00:07:16.073Z",
   "novidades": [
     {
-      "versao": "0.9.30",
-      "titulo": "Gravações com lista e área",
+      "versao": "0.9.31",
+      "titulo": "Gravar tela: inteira ou área",
       "itens": [
-        "Ao parar a gravação, o painel leva você para Ao vivo → \"Minhas gravações\", com a nova no topo. Dali dá para Abrir (assistir), mostrar na pasta e Apagar (vai para a Lixeira do Windows).",
-        "Espelhar a tela: a imagem para os alunos voltou a ficar nítida (1600x900, prioridade para o texto). Ao começar a espelhar, o painel se minimiza sozinho e aparece um aviso \"● Espelhando\" com o botão Parar no topo da tela.",
-        "Barra do aluno: corrigido o caso em que, ao desligar e ligar a barra de novo, ela demorava minutos para voltar (ou nem voltava).",
-        "Gravar só uma parte da tela: botão \"Escolher área da tela\" (arraste um retângulo). Bom para gravar uma janela pequena. \"Tela inteira\" volta ao normal."
+        "Ao clicar em \"Gravar tela\" (no topo ou em Ao vivo), o painel pergunta se você quer a tela inteira ou uma área. Para a área, arraste um retângulo sobre a tela.",
+        "Padrão da mesa: a lista de programas ficou em duas colunas, com \"Marcar todos\", \"Desmarcar todos\", marcar/limpar por área e um botão \"Aplicar agora\" no topo da lista.",
+        "Saiu o \"Portal F5\" fixo. Agora há \"Dados da escola\" (site e Instagram) e os atalhos \"Portal da escola\" e \"Instagram da escola\" usam o que você cadastrar.",
+        "Nova turma: os dias da semana ficaram alinhados, em botões.",
+        "A captura passa a usar sempre a tela principal, e o recorte da área fica preciso também com mais de um monitor."
       ]
     }
   ]
