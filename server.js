@@ -40,6 +40,10 @@ app.use('/api/ead',         require('./routes/ead'));
 app.use('/api/conta-f5',    require('./routes/contaF5'));
 app.use('/api/sala',        require('./routes/salaBackup'));
 app.use('/api/sala',        require('./routes/salaVersao'));
+app.use('/api/sala/licenca', require('./routes/salaLicenca'));
+app.use('/api/sala/pagar',   require('./routes/salaPagamento'));
+app.use('/api/sala/suporte', require('./routes/salaSuporte'));
+app.use('/api/admin/sala',   adminAuth, require('./routes/salaAdmin'));
 app.use('/api/digitacao',   require('./routes/digitacao'));
 app.use('/api/lixeira',     adminAuth, require('./routes/lixeira'));
 app.use('/api/debounce',    require('./routes/debounce'));
@@ -76,6 +80,10 @@ app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: err.message || 'Erro interno do servidor' });
 });
+
+// F5 Sala: cria as tabelas (e a licença vitalícia da F5) e liga os lembretes de vencimento
+require('./lib/salaDb').garantirTabelas().catch(() => {});
+require('./lib/salaLembretes').iniciar();
 
 app.listen(PORT, () => {
   console.log(`✅  F5 API rodando na porta ${PORT}`);
