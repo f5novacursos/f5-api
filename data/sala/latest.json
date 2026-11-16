@@ -1,15 +1,16 @@
 {
-  "versao": "0.9.36",
-  "sha256": "a5084822a8504e19c73a4ac5ebc15a8b4c0bf3a291ed86226699affee8b7333d",
-  "tamanho": 2123043,
+  "versao": "0.9.37",
+  "sha256": "a717d6ca702fe6ca45a380606f62dec99c009d8af1838fedd9b865ad27e4355e",
+  "tamanho": 2125205,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-16T13:32:29.181Z",
+  "publicadoEm": "2026-11-16T13:45:15.800Z",
   "novidades": [
     {
-      "versao": "0.9.36",
-      "titulo": "Telas dos alunos maiores",
+      "versao": "0.9.37",
+      "titulo": "Modo \"Só os alunos\"",
       "itens": [
-        "O nome do aluno agora fica sobre a base da miniatura, em letra menor, e o cartão é só a tela. O botão \"Auto\" mostra a tela de cada aluno bem maior para a mesma sala."
+        "Na tela Alunos, o botão \"⛶ Só os alunos\" (barra de baixo) esconde as ferramentas do topo e ajusta tudo para as telas dos alunos ficarem bem maiores. Clique em \"☰ Mostrar ferramentas\" (ou aperte Esc) para voltar.",
+        "Se algum aluno pedir ajuda no modo \"Só os alunos\", o aviso \"✋ pedidos de ajuda\" continua aparecendo no topo."
       ]
     }
   ]
