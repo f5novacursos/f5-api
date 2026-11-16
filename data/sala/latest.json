@@ -1,15 +1,15 @@
 {
-  "versao": "0.9.35",
-  "sha256": "699e191ba134bf87fe0c9e81649094a55c6064bd4f3eff58f453741b90418c7c",
-  "tamanho": 2121083,
+  "versao": "0.9.36",
+  "sha256": "a5084822a8504e19c73a4ac5ebc15a8b4c0bf3a291ed86226699affee8b7333d",
+  "tamanho": 2123043,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-16T13:10:55.316Z",
+  "publicadoEm": "2026-11-16T13:32:29.181Z",
   "novidades": [
     {
-      "versao": "0.9.35",
-      "titulo": "Cartões só com o nome do aluno",
+      "versao": "0.9.36",
+      "titulo": "Telas dos alunos maiores",
       "itens": [
-        "O cartão do aluno mostra só o nome (sem \"Computador DESKTOP-...\"). Para ver o nome do computador, pare o mouse em cima do nome do aluno."
+        "O nome do aluno agora fica sobre a base da miniatura, em letra menor, e o cartão é só a tela. O botão \"Auto\" mostra a tela de cada aluno bem maior para a mesma sala."
       ]
     }
   ]
