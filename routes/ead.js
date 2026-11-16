@@ -2247,6 +2247,26 @@ router.delete('/alunos/web/:id', eadAdminMiddleware, async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
+// POST /api/ead/alunos/web/:id/anonimizar — LGPD: apaga dados pessoais e bloqueia a conta (admin, irreversível)
+router.post('/alunos/web/:id/anonimizar', eadAdminMiddleware, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { rowCount } = await db.query(
+      `UPDATE ead_usuarios
+          SET nome = 'Usuário removido',
+              email = NULL, cpf = NULL, telefone = NULL, senha_hash = NULL,
+              google_sub = NULL, avatar_url = NULL, cidade = NULL, nome_login = NULL,
+              email_responsavel = NULL, telefone_responsavel = NULL,
+              status = 'inativo', deletado_em = COALESCE(deletado_em, NOW())
+        WHERE id = $1`,
+      [id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Aluno não encontrado' });
+    await db.query(`UPDATE ead_matriculas SET status = 'inativa' WHERE usuario_id = $1`, [id]);
+    res.json({ ok: true });
+  } catch(e) { next(e); }
+});
+
 // GET /api/ead/alunos/web/:id/matriculas — matrículas ativas de um usuário web (admin)
 router.get('/alunos/web/:id/matriculas', eadAdminMiddleware, async (req, res, next) => {
   try {
