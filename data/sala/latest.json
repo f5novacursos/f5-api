@@ -1,17 +1,17 @@
 {
-  "versao": "0.9.32",
-  "sha256": "acbae8c0225e8dcba577243a87a1d57ab243977853f0ffcf1137419b348aa19d",
-  "tamanho": 2113592,
+  "versao": "0.9.33",
+  "sha256": "3f3dc67963e85ac0d550292b1c40231bccf1e824e85768581079d909ce09e4da",
+  "tamanho": 2118097,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-16T12:17:09.765Z",
+  "publicadoEm": "2026-11-16T12:44:23.064Z",
   "novidades": [
     {
-      "versao": "0.9.32",
-      "titulo": "Cartões mais limpos e mudar aluno de sala",
+      "versao": "0.9.33",
+      "titulo": "Alertas só com ícone",
       "itens": [
-        "Quando um aluno tenta abrir algo bloqueado, o cartão mostra só um selo 🚫 com a quantidade (o texto aparece ao parar o mouse). O aviso que pulava na tela saiu.",
-        "Pedido de ajuda, dúvida e \"terminei\" agora ocupam uma linha só, com os botões 👁 (ver a tela) e ✔ (já resolvi).",
-        "Botão direito no aluno → \"Mudar de sala…\". Selecione vários alunos e clique com o botão direito em um deles para mandar todos de uma vez para outra sala."
+        "Pedido de ajuda, dúvida e \"terminei\" agora são só um ícone no canto da miniatura do aluno. Passe o mouse no ícone para ver a mensagem e os botões \"Atender (ver a tela)\" e \"Já resolvi\".",
+        "Tentativa de abrir algo bloqueado também é só um ícone 🚫 com a quantidade. Os cartões ficam todos do mesmo tamanho.",
+        "Com o mouse em cima do ícone, a prévia ampliada do cartão não abre."
       ]
     }
   ]
