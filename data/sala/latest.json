@@ -1,19 +1,17 @@
 {
-  "versao": "0.9.31",
-  "sha256": "608e76c80bf4033cdeae158772cdce711d5a89ae659d71d6cc5e1c26c426f236",
-  "tamanho": 2109239,
+  "versao": "0.9.32",
+  "sha256": "acbae8c0225e8dcba577243a87a1d57ab243977853f0ffcf1137419b348aa19d",
+  "tamanho": 2113592,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-15T00:07:16.073Z",
+  "publicadoEm": "2026-11-16T12:17:09.765Z",
   "novidades": [
     {
-      "versao": "0.9.31",
-      "titulo": "Gravar tela: inteira ou área",
+      "versao": "0.9.32",
+      "titulo": "Cartões mais limpos e mudar aluno de sala",
       "itens": [
-        "Ao clicar em \"Gravar tela\" (no topo ou em Ao vivo), o painel pergunta se você quer a tela inteira ou uma área. Para a área, arraste um retângulo sobre a tela.",
-        "Padrão da mesa: a lista de programas ficou em duas colunas, com \"Marcar todos\", \"Desmarcar todos\", marcar/limpar por área e um botão \"Aplicar agora\" no topo da lista.",
-        "Saiu o \"Portal F5\" fixo. Agora há \"Dados da escola\" (site e Instagram) e os atalhos \"Portal da escola\" e \"Instagram da escola\" usam o que você cadastrar.",
-        "Nova turma: os dias da semana ficaram alinhados, em botões.",
-        "A captura passa a usar sempre a tela principal, e o recorte da área fica preciso também com mais de um monitor."
+        "Quando um aluno tenta abrir algo bloqueado, o cartão mostra só um selo 🚫 com a quantidade (o texto aparece ao parar o mouse). O aviso que pulava na tela saiu.",
+        "Pedido de ajuda, dúvida e \"terminei\" agora ocupam uma linha só, com os botões 👁 (ver a tela) e ✔ (já resolvi).",
+        "Botão direito no aluno → \"Mudar de sala…\". Selecione vários alunos e clique com o botão direito em um deles para mandar todos de uma vez para outra sala."
       ]
     }
   ]
