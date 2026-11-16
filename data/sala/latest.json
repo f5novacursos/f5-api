@@ -1,17 +1,17 @@
 {
-  "versao": "0.9.33",
-  "sha256": "3f3dc67963e85ac0d550292b1c40231bccf1e824e85768581079d909ce09e4da",
-  "tamanho": 2118097,
+  "versao": "0.9.34",
+  "sha256": "08aa9c3afc7ce479bafee76361e2101be501d85963c03f78f93ead4a29a8406d",
+  "tamanho": 2120680,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-16T12:44:23.064Z",
+  "publicadoEm": "2026-11-16T13:00:18.770Z",
   "novidades": [
     {
-      "versao": "0.9.33",
-      "titulo": "Alertas só com ícone",
+      "versao": "0.9.34",
+      "titulo": "Pedidos de ajuda sem poluir os cartões",
       "itens": [
-        "Pedido de ajuda, dúvida e \"terminei\" agora são só um ícone no canto da miniatura do aluno. Passe o mouse no ícone para ver a mensagem e os botões \"Atender (ver a tela)\" e \"Já resolvi\".",
-        "Tentativa de abrir algo bloqueado também é só um ícone 🚫 com a quantidade. Os cartões ficam todos do mesmo tamanho.",
-        "Com o mouse em cima do ícone, a prévia ampliada do cartão não abre."
+        "O pedido de ajuda, a dúvida e o \"terminei\" não aparecem mais dentro do cartão do aluno: o cartão só muda de cor (laranja = ajuda, azul = dúvida, verde = terminou).",
+        "Clique em \"✋ N pedidos de ajuda\", lá em cima, para ver quem pediu, a mensagem e os botões \"Atender (ver a tela)\" e \"Já resolvi\".",
+        "Tentativa de abrir algo bloqueado fica só como um ícone 🚫 no canto da miniatura (passe o mouse para ver o detalhe)."
       ]
     }
   ]
