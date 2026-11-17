@@ -2057,6 +2057,20 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
       });
     } catch(_) {} // coluna pode ainda não existir no DB — ignora silenciosamente
 
+    // Online no F5 Profissional (heartbeat em digitacao_usuarios.ultimo_acesso, últimos 3 minutos)
+    const onlineDigSet = new Set();
+    try {
+      const { rows: onlineDig } = await db.query(
+        `SELECT id, ead_usuario_id, aluno_id FROM digitacao_usuarios
+         WHERE ultimo_acesso > NOW() - INTERVAL '3 minutes'`
+      );
+      onlineDig.forEach(r => {
+        onlineDigSet.add(Number(r.id));
+        if (r.ead_usuario_id) onlineWebSet.add(Number(r.ead_usuario_id));
+        if (r.aluno_id)       onlinePresSet.add(Number(r.aluno_id));
+      });
+    } catch(_) {}
+
     // Progresso em ead_progresso
     const { rows: eadProgs } = await db.query(
       `SELECT m.usuario_id, m.aluno_id, COUNT(DISTINCT p.aula_id) AS concluidas
@@ -2150,7 +2164,7 @@ router.get('/alunos', eadAdminMiddleware, async (req, res, next) => {
           cursos: digCursoId ? [digCursoId] : [],
           progresso_pct: progressoPct,
           suporte_nao_lidas: 0,
-          online: false,
+          online: onlineDigSet.has(Number(du.id)),
         });
       }
     } catch (_) {}

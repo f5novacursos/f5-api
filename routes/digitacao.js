@@ -362,6 +362,16 @@ router.post('/auth/google', authLimiter, async (req, res, next) => {
 });
 
 router.get('/auth/me', auth, (req, res) => res.json({ user: req.digitacaoUser }));
+
+// Heartbeat do F5 Profissional: marca o aluno como online no painel admin (lido em GET /api/ead/alunos).
+router.post('/presenca', auth, async (req, res) => {
+  try {
+    await db.query('UPDATE digitacao_usuarios SET ultimo_acesso = NOW() WHERE id = $1', [req.digitacaoUser.id]);
+    res.json({ ok: true });
+  } catch (_) {
+    res.json({ ok: false }); // heartbeat é silencioso
+  }
+});
 router.get('/progresso', auth, async (req, res, next) => {
   try { res.json({ progress: await getProgress(req.digitacaoUser.id) }); }
   catch (error) { next(error); }
