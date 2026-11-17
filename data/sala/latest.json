@@ -1,16 +1,16 @@
 {
-  "versao": "0.9.37",
-  "sha256": "a717d6ca702fe6ca45a380606f62dec99c009d8af1838fedd9b865ad27e4355e",
-  "tamanho": 2125205,
+  "versao": "0.9.38",
+  "sha256": "72866d1ee27f25b4b8d2156f1b1abb30415036391e690095b650a92477570e12",
+  "tamanho": 2128226,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-16T13:45:15.800Z",
+  "publicadoEm": "2026-11-17T21:11:21.748Z",
   "novidades": [
     {
-      "versao": "0.9.37",
-      "titulo": "Modo \"Só os alunos\"",
+      "versao": "0.9.38",
+      "titulo": "Bloqueio de emuladores de Android mais completo",
       "itens": [
-        "Na tela Alunos, o botão \"⛶ Só os alunos\" (barra de baixo) esconde as ferramentas do topo e ajusta tudo para as telas dos alunos ficarem bem maiores. Clique em \"☰ Mostrar ferramentas\" (ou aperte Esc) para voltar.",
-        "Se algum aluno pedir ajuda no modo \"Só os alunos\", o aviso \"✋ pedidos de ajuda\" continua aparecendo no topo."
+        "Pacote \"Emuladores de Android\" (em Jogos) ampliado: BlueStacks, LDPlayer, Nox, MEmu, MuMu, GameLoop, Genymotion, KoPlayer, Android na nuvem (now.gg, Appetize...) e os sites de download, com todos os endereços e programas de cada um.",
+        "Novo serviço \"Sites de download de programas\" (Softonic, Filehippo, Malavida, Baixaki...). Como os outros, dá para liberar só ele quando precisar."
       ]
     }
   ]
