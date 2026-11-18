@@ -1637,69 +1637,76 @@ router.put('/aluno/perfil-kids', eadAuthMiddleware, async (req, res, next) => {
     if (req.user.perfil !== 'kids') {
       return res.status(403).json({ error: 'Operação permitida apenas para contas Kids.' });
     }
-    const { nome, senha, email_responsavel } = req.body;
-    if (!nome || !nome.trim()) {
-      return res.status(400).json({ error: 'Informe seu nome ou apelido.' });
-    }
-    const nomeLimpo = nome.trim().replace(/\s+/g, ' ');
-    const nomeLogin = normalizarNomeLogin(nomeLimpo);
+    const { nome, nome_login, senha, email_responsavel } = req.body;
+    const sets = [];
+    const params = [];
+    const add = (coluna, valor) => { params.push(valor); sets.push(coluna + ' = $' + params.length); };
+    const nomeValido = (v) => v.length >= 2 && v.length <= 40 && /^[\p{L}\p{N} _.-]+$/u.test(v);
+    let nomeLimpo = null;
 
-    if (nomeLimpo.length < 2 || nomeLimpo.length > 40 || !/^[\p{L}\p{N} _.-]+$/u.test(nomeLimpo)) {
-      return res.status(400).json({ error: 'Use um nome ou apelido de 2 a 40 caracteres (apenas letras, números e espaços).' });
+    // Apelido (nome exibido no curso). NÃO altera o nome de login.
+    if (nome !== undefined && nome !== null) {
+      nomeLimpo = String(nome).trim().replace(/\s+/g, ' ');
+      if (!nomeValido(nomeLimpo)) {
+        return res.status(400).json({ error: 'Use um apelido de 2 a 40 caracteres (apenas letras, números e espaços).' });
+      }
+      add('nome', nomeLimpo);
     }
 
-    // Validação opcional de e-mail do responsável
-    let emailRespLimpo = null;
+    // Nome de login (usado para entrar). Só muda quando o aluno pede explicitamente.
+    if (nome_login !== undefined && nome_login !== null) {
+      const loginLimpo = String(nome_login).trim().replace(/\s+/g, ' ');
+      if (!nomeValido(loginLimpo)) {
+        return res.status(400).json({ error: 'Use um nome de login de 2 a 40 caracteres (apenas letras, números e espaços).' });
+      }
+      const nomeLogin = normalizarNomeLogin(loginLimpo);
+      const { rows: existente } = await db.query(
+        'SELECT id FROM ead_usuarios WHERE LOWER(nome_login) = $1 AND id <> $2 AND deletado_em IS NULL LIMIT 1',
+        [nomeLogin, req.user.id]
+      );
+      if (existente.length) {
+        return res.status(409).json({ error: 'Esse nome de login já está em uso por outro aluno. Escolha outro.' });
+      }
+      add('nome_login', nomeLogin);
+    }
+
+    // E-mail de recuperação (opcional; vazio mantém o atual)
     if (email_responsavel !== undefined && email_responsavel !== null) {
       const eStr = String(email_responsavel).trim().toLowerCase();
       if (eStr) {
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(eStr)) {
           return res.status(400).json({ error: 'Informe um e-mail válido para recuperação ou deixe em branco.' });
         }
-        emailRespLimpo = eStr;
+        add('email_responsavel', eStr);
       }
     }
 
-    // Verificar se nome_login já está em uso por outro usuário
-    const { rows: existente } = await db.query(
-      'SELECT id FROM ead_usuarios WHERE LOWER(nome_login) = $1 AND id <> $2 AND deletado_em IS NULL LIMIT 1',
-      [nomeLogin, req.user.id]
-    );
-    if (existente.length) {
-      return res.status(409).json({ error: 'Esse nome já está em uso por outro aluno. Escolha outro.' });
-    }
-
-    let senhaHash = null;
-    if (senha && senha.trim()) {
+    // Nova senha (opcional)
+    if (senha && String(senha).trim()) {
       if (senha.length < 6 || senha.length > 100) {
         return res.status(400).json({ error: 'A nova senha precisa ter pelo menos 6 caracteres.' });
       }
-      senhaHash = await bcrypt.hash(senha, 12);
+      add('senha_hash', await bcrypt.hash(senha, 12));
     }
 
-    let query = '';
-    let params = [];
-    if (senhaHash && emailRespLimpo !== null) {
-      query = 'UPDATE ead_usuarios SET nome = $1, nome_login = $2, senha_hash = $3, email_responsavel = $4 WHERE id = $5 RETURNING *';
-      params = [nomeLimpo, nomeLogin, senhaHash, emailRespLimpo, req.user.id];
-    } else if (senhaHash) {
-      query = 'UPDATE ead_usuarios SET nome = $1, nome_login = $2, senha_hash = $3 WHERE id = $4 RETURNING *';
-      params = [nomeLimpo, nomeLogin, senhaHash, req.user.id];
-    } else if (emailRespLimpo !== null) {
-      query = 'UPDATE ead_usuarios SET nome = $1, nome_login = $2, email_responsavel = $3 WHERE id = $4 RETURNING *';
-      params = [nomeLimpo, nomeLogin, emailRespLimpo, req.user.id];
-    } else {
-      query = 'UPDATE ead_usuarios SET nome = $1, nome_login = $2 WHERE id = $3 RETURNING *';
-      params = [nomeLimpo, nomeLogin, req.user.id];
+    if (!sets.length) return res.status(400).json({ error: 'Nada para salvar.' });
+    params.push(req.user.id);
+    let updated;
+    try {
+      ({ rows: updated } = await db.query(
+        'UPDATE ead_usuarios SET ' + sets.join(', ') + ' WHERE id = $' + params.length + ' RETURNING *',
+        params
+      ));
+    } catch (errUp) {
+      if (errUp.code === '23505') return res.status(409).json({ error: 'Esse nome de login já está em uso por outro aluno. Escolha outro.' });
+      throw errUp;
     }
-
-    const { rows: updated } = await db.query(query, params);
     if (!updated.length) return res.status(404).json({ error: 'Usuário não encontrado.' });
 
     const u = updated[0];
 
     // Atualizar também na tabela digitacao_usuarios se houver
-    await db.query(
+    if (nomeLimpo) await db.query(
       'UPDATE digitacao_usuarios SET nome = $1 WHERE ead_usuario_id = $2',
       [nomeLimpo, u.id]
     ).catch(() => {});
@@ -1715,6 +1722,7 @@ router.put('/aluno/perfil-kids', eadAuthMiddleware, async (req, res, next) => {
       usuario: {
         id: u.id,
         nome: u.nome,
+        nome_certificado: u.nome_certificado || null,
         usuario: u.nome_login || null,
         email: u.email || null,
         email_responsavel: u.email_responsavel || null,
