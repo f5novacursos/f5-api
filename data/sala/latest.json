@@ -1,16 +1,18 @@
 {
-  "versao": "0.9.46",
-  "sha256": "39e9e5a4f38fdd52745c0ad021dd7e375f49fe215a4f614ab7f121e8c512430b",
-  "tamanho": 2435033,
+  "versao": "0.9.47",
+  "sha256": "43cc2bd731ead93c9216e824f9f8a645a9b6c8fcf99beb56f9ee733aeda1a3e9",
+  "tamanho": 2442311,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-18T04:02:55.600Z",
+  "publicadoEm": "2026-11-18T16:41:40.683Z",
   "novidades": [
     {
-      "versao": "0.9.46",
-      "titulo": "Turmas mais bonitas",
+      "versao": "0.9.47",
+      "titulo": "Manutenção em abas, com ícones",
       "itens": [
-        "Turmas: cada turma é um cartão com inicial colorida, etiquetas (sala, dias, horário, alunos) e botões em uma linha só (Editar, Duplicar, Encerrar, e Excluir separado em vermelho).",
-        "Nova turma / Editar turma: formulário em blocos (dados, dias da aula, alunos), com os dias da semana como botões em vez do quadradinho."
+        "Manutenção da sala: agora tem 3 abas — ⚡ No dia a dia (Defender, Data e hora, Instalar programa, Downloads e Lixeira, Fim da aula), 🎨 Aparência e ajustes e 🏫 Configuração da sala (Renomear, Grupo de trabalho, Desinstalar).",
+        "Cartões todos do mesmo tamanho, com ícone, uma linha de descrição, botões lado a lado e as opções recolhidas em \"Opções\" ou \"Saiba mais\". Os cartões com 🔒 só funcionam depois de liberar o ajudante com a senha.",
+        "Ajustes do computador organizados por grupo (Mouse, Teclado, Tela e energia, Som, Aparência), cada ajuste com o seu ícone.",
+        "Cadastro da turma: telefone com poucos números (ex.: 123) agora avisa em vez de ficar grudado no nome do aluno."
       ]
     }
   ]
