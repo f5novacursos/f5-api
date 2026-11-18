@@ -1472,6 +1472,36 @@ router.get('/progresso/kids', eadAuthMiddleware, async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
+// Emite o certificado do Digitação Kids quando as 36 atividades estão concluídas. Idempotente.
+// Só vale para matrícula do curso Kids (nunca emite para outro curso).
+async function emitirCertificadoKidsSeCompleto(matriculaId, cursoId) {
+  const { rows: curso } = await db.query('SELECT slug, tipo_conteudo FROM ead_cursos WHERE id = $1', [cursoId]);
+  if (!curso.length || (curso[0].slug !== DIGITACAO_KIDS_SLUG && curso[0].tipo_conteudo !== 'digitacao-kids')) return null;
+
+  const { rows: tot } = await db.query(
+    'SELECT COUNT(a.id) FROM ead_aulas a JOIN ead_modulos m ON a.modulo_id = m.id WHERE m.curso_id = $1',
+    [cursoId]
+  );
+  const { rows: done } = await db.query('SELECT COUNT(*) FROM ead_progresso WHERE matricula_id = $1', [matriculaId]);
+  const total = parseInt(tot[0].count) || 0;
+  const concluidas = parseInt(done[0].count) || 0;
+  if (total < 36 || concluidas < total) return null;
+
+  const { rows: ja } = await db.query('SELECT * FROM ead_certificados WHERE matricula_id = $1', [matriculaId]);
+  if (ja.length) return ja[0];
+
+  const { rows: cont } = await db.query('SELECT COUNT(*) FROM ead_certificados');
+  const sequencia = String(parseInt(cont[0].count) + 1).padStart(4, '0');
+  const codigo = `F5-KIDS-${new Date().getFullYear()}-${sequencia}`;
+  const { rows: novo } = await db.query(
+    'INSERT INTO ead_certificados (matricula_id, codigo) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING *',
+    [matriculaId, codigo]
+  );
+  if (novo.length) return novo[0];
+  const { rows: de_novo } = await db.query('SELECT * FROM ead_certificados WHERE matricula_id = $1', [matriculaId]);
+  return de_novo[0] || null;
+}
+
 // POST /api/ead/progresso/kids
 router.post('/progresso/kids', eadAuthMiddleware, async (req, res, next) => {
   try {
@@ -1586,7 +1616,18 @@ router.post('/progresso/kids', eadAuthMiddleware, async (req, res, next) => {
       }
     }
 
-    res.json({ ok: true });
+    // Certificado do curso Kids (quando as 36 atividades estiverem concluídas)
+    let certificado = null;
+    if (mats.length && passed) {
+      try {
+        const cert = await emitirCertificadoKidsSeCompleto(mats[0].id, mats[0].curso_id);
+        if (cert) certificado = { codigo: cert.codigo };
+      } catch (errCert) {
+        console.warn('Falha ao emitir certificado kids:', errCert.message);
+      }
+    }
+
+    res.json({ ok: true, certificado });
   } catch(e) { next(e); }
 });
 
@@ -1704,6 +1745,19 @@ router.get('/certificados', eadAuthMiddleware, async (req, res, next) => {
     if (!mats.length) return res.json([]);
 
     const matsIds = mats.map(m => m.id);
+
+    // Quem já concluiu o Kids antes do certificado existir recebe o dele ao abrir a lista.
+    try {
+      const { rows: kidsMats } = await db.query(
+        `SELECT m.id, m.curso_id FROM ead_matriculas m JOIN ead_cursos c ON c.id = m.curso_id
+         WHERE m.id = ANY($1) AND (c.slug = $2 OR c.tipo_conteudo = 'digitacao-kids')`,
+        [matsIds, DIGITACAO_KIDS_SLUG]
+      );
+      for (const km of kidsMats) await emitirCertificadoKidsSeCompleto(km.id, km.curso_id);
+    } catch (errKids) {
+      console.warn('Falha ao emitir certificado kids (lista):', errKids.message);
+    }
+
     const { rows: certs } = await db.query(
       `SELECT c.*, cur.titulo AS curso_titulo, cur.carga_horaria
        FROM ead_certificados c

@@ -112,7 +112,7 @@ router.get("/validar", async (req, res) => {
     if (result.rows.length === 0) {
       const ead = await pool.query(
         'SELECT cert.codigo, cert.data_emissao, cur.titulo AS curso, cur.carga_horaria, ' +
-        'COALESCE(u.nome, a.nome) AS nome ' +
+        "COALESCE(NULLIF(TRIM(u.nome_certificado), ''), u.nome, a.nome) AS nome " +
         'FROM ead_certificados cert ' +
         'JOIN ead_matriculas m ON m.id = cert.matricula_id ' +
         'JOIN ead_cursos cur ON cur.id = m.curso_id ' +
