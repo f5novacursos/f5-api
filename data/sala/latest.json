@@ -1,18 +1,25 @@
 {
-  "versao": "0.9.47",
-  "sha256": "43cc2bd731ead93c9216e824f9f8a645a9b6c8fcf99beb56f9ee733aeda1a3e9",
-  "tamanho": 2442311,
+  "versao": "0.9.48",
+  "sha256": "1e0b97a0c8a52a64b343d76dc1b51edbfa54949488183ba92e118c2bcd2349e8",
+  "tamanho": 2480820,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-18T16:41:40.683Z",
+  "publicadoEm": "2026-11-18T21:34:33.574Z",
   "novidades": [
     {
-      "versao": "0.9.47",
-      "titulo": "Manutenção em abas, com ícones",
+      "versao": "0.9.48",
+      "titulo": "Telas reorganizadas: Início, Turmas, Ao vivo e Desktop do aluno",
       "itens": [
-        "Manutenção da sala: agora tem 3 abas — ⚡ No dia a dia (Defender, Data e hora, Instalar programa, Downloads e Lixeira, Fim da aula), 🎨 Aparência e ajustes e 🏫 Configuração da sala (Renomear, Grupo de trabalho, Desinstalar).",
-        "Cartões todos do mesmo tamanho, com ícone, uma linha de descrição, botões lado a lado e as opções recolhidas em \"Opções\" ou \"Saiba mais\". Os cartões com 🔒 só funcionam depois de liberar o ajudante com a senha.",
-        "Ajustes do computador organizados por grupo (Mouse, Teclado, Tela e energia, Som, Aparência), cada ajuste com o seu ícone.",
-        "Cadastro da turma: telefone com poucos números (ex.: 123) agora avisa em vez de ficar grudado no nome do aluno."
+        "Início: \"Sua sala\" com os computadores em cartõezinhos (nome, bolinha verde e escudo), \"Sua aula\" mais enxuta e os indicadores (sites, programas, modo, pedidos de ajuda) logo abaixo, em vez de escondidos no fim.",
+        "Turmas: as turmas viram cartões em grade (faixa colorida, selo Aberta/Em aula/Encerrada, dias, horário e alunos). \"Ver alunos\" abre a lista da turma e o lápis ✏️ abre a edição numa janela (Duplicar, Encerrar e Excluir ficam lá dentro).",
+        "Cadastro dos alunos: escolha a turma e veja os alunos dela na hora (com busca); as respostas dos alunos chegam em cartões com e-mail, WhatsApp e situação.",
+        "Ao vivo: agora tem 4 abas — Print e gravação, Trabalho em grupo, Sala de visitantes e Ronda. Print e gravação lado a lado, com as gravações logo abaixo.",
+        "Gravação de ÁREA: enquanto grava, o resto da tela escurece e a área escolhida fica com uma borda vermelha (isso não aparece no vídeo).",
+        "Desktop do aluno: 3 abas (Papel de parede e ícones, Atalhos, Padrão da mesa). No Padrão da mesa, os programas viram cartõezinhos para marcar, com as ações no alto.",
+        "Manutenção: Aparência e ajustes agora tem um cartão para cada grupo (Mouse, Teclado, Tela e energia, Som, Tema e cor, Ícones), cada um com o seu botão Aplicar. Configuração da sala em 3 colunas. Downloads, Lixeira e Fim da aula agora aparecem em \"Resultados dos pedidos\".",
+        "Listas padrão: a lista de sites já vem com os 519 sites que você montou (tudo bloqueado), os pacotes de jogos, vídeos, IA e adultos ganharam os sites novos, e o Chrome já fica na lista de programas a bloquear (o bloqueio continua desligado em Aula livre).",
+        "Ponteiro do mouse: o tamanho agora também ajusta o tamanho em pixels do Windows (antes só gravava o nível e não mudava na tela). Precisa testar no aluno.",
+        "O nome do professor aparece só com o nome da pessoa (sem \"Prof.\" na frente).",
+        "Instalar programa: ao escolher um .exe, o campo de parâmetros abre sozinho."
       ]
     }
   ]
