@@ -1,18 +1,17 @@
 {
-  "versao": "0.9.44",
-  "sha256": "554682b68cb8392d6c7246e77eeaae73e5f6166aa4e92e8f8b80cbe9ae2f63f4",
-  "tamanho": 2415845,
+  "versao": "0.9.45",
+  "sha256": "5d160053ba11bbe81956f6f6b906a45fd042d7bf9479381faed6047658175739",
+  "tamanho": 2431198,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-18T03:49:42.247Z",
+  "publicadoEm": "2026-11-18T03:57:33.203Z",
   "novidades": [
     {
-      "versao": "0.9.44",
-      "titulo": "Diário em colunas organizadas, senha do ajudante mais limpa e seleção mais fácil",
+      "versao": "0.9.45",
+      "titulo": "Cadastro dos alunos com WhatsApp e e-mail conferido",
       "itens": [
-        "Turmas → Diário e frequência: grade alinhada (nomes fixos à esquerda, uma coluna de 54 px por dia, com o dia da semana). Os dias de aula da turma sem chamada aparecem com um ponto (clique para lançar) e os 3 próximos dias de aula já aparecem em cinza.",
-        "Manutenção: o bloco de liberar com a senha ficou numa barra compacta (a explicação foi para \"Como funciona\").",
-        "Clicar no espaço em branco de qualquer tela limpa a seleção de alunos.",
-        "Enviar link/texto: cada item da lista tem um ✕ e há o botão \"Limpar a lista\"."
+        "Cadastro dos alunos: novo campo opcional de WhatsApp/telefone, com máscara (83) 99999-9999 e conferência do DDD. Os alunos precisam da versão nova (Atualizar alunos).",
+        "E-mail conferido na hora: campo fica vermelho com espaço, falta de @ ou final errado, e sugere o certo em erros comuns (gmial, hotmial, .con, gmail.com.br...).",
+        "Turmas → Cadastro: lista de contatos da turma com botão 💬 WhatsApp (abre a conversa), e a lista de alunos da turma agora aceita \"Nome, e-mail, WhatsApp\" e avisa o que está errado antes de salvar."
       ]
     }
   ]
