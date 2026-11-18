@@ -68,6 +68,7 @@ function publicUser(user, courses) {
   return {
     id: user.id,
     nome: user.nome,
+    nome_certificado: user.nome_certificado || null,
     email: user.email,
     email_responsavel: user.email_responsavel || null,
     cpf: user.cpf || null,
@@ -659,6 +660,36 @@ router.post('/email/confirmar', authLimiter, alunoAuth, async (req, res, next) =
     const user = updated.rows[0];
     const courses = await cursosAtivos(user.id);
     res.json({ ok: true, msg: 'E-mail alterado com sucesso!', usuario: publicUser(user, courses) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT /api/conta-f5/nome-certificado — nome impresso no certificado, separado do login e do nome da conta.
+router.put('/nome-certificado', authLimiter, alunoAuth, async (req, res, next) => {
+  try {
+    // Só contas web (ead_usuarios). Tokens de outros tipos têm ids de outras tabelas.
+    if (req.aluno.tipo !== 'web') return res.status(400).json({ error: 'Disponível apenas para contas online.' });
+    const nome = String(req.body.nome == null ? '' : req.body.nome).replace(/\s+/g, ' ').trim();
+    if (nome) {
+      if (nome.length < 3 || nome.length > 100) {
+        return res.status(400).json({ error: 'Digite o nome completo (de 3 a 100 letras).' });
+      }
+      if (!/^[\p{L}\p{M}][\p{L}\p{M}' .-]*$/u.test(nome) || (nome.match(/\p{L}/gu) || []).length < 3) {
+        return res.status(400).json({ error: 'Use apenas letras, espaços, apóstrofo, ponto ou hífen.' });
+      }
+    }
+    await db.query('ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS nome_certificado VARCHAR(160)').catch(() => {});
+    const { rows } = await db.query(
+      'UPDATE ead_usuarios SET nome_certificado = $1 WHERE id = $2 AND deletado_em IS NULL RETURNING id, nome, nome_certificado',
+      [nome || null, req.aluno.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Conta não encontrada.' });
+    res.json({
+      ok: true,
+      nome_certificado: rows[0].nome_certificado || null,
+      msg: nome ? 'Nome do certificado salvo!' : 'Pronto! O certificado voltará a usar o nome da conta.'
+    });
   } catch (error) {
     next(error);
   }

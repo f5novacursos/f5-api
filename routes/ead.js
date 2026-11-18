@@ -234,6 +234,7 @@ async function initEadDatabase() {
   await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS ranking_publico BOOLEAN NOT NULL DEFAULT TRUE`);
   await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS ead_usuarios_google_sub_unique ON ead_usuarios (google_sub) WHERE google_sub IS NOT NULL`);
   await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS ead_usuarios_nome_login_unique ON ead_usuarios (LOWER(nome_login)) WHERE nome_login IS NOT NULL AND deletado_em IS NULL`);
+  await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS nome_certificado VARCHAR(160)`);
   await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS email_responsavel VARCHAR(200)`);
   await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS telefone_responsavel VARCHAR(40)`);
   await db.query(`ALTER TABLE ead_usuarios ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'ativo'`);
@@ -1712,10 +1713,20 @@ router.get('/certificados', eadAuthMiddleware, async (req, res, next) => {
       [matsIds]
     );
 
+    // Nome impresso no certificado: "Nome no certificado" do aluno web, se preenchido; senão o nome da conta.
+    let nomeCert = req.user.nome;
+    if (req.user.tipo !== 'presencial') {
+      const { rows: nm } = await db.query(
+        "SELECT COALESCE(NULLIF(TRIM(nome_certificado), ''), nome) AS nome FROM ead_usuarios WHERE id = $1",
+        [req.user.id]
+      );
+      if (nm.length && nm[0].nome) nomeCert = nm[0].nome;
+    }
+
     res.json(certs.map(c => ({
       id: c.id,
       codigo: c.codigo,
-      nomeAluno: req.user.nome,
+      nomeAluno: nomeCert,
       nomeCurso: c.curso_titulo,
       carga: c.carga_horaria,
       emissao: c.data_emissao
@@ -1730,7 +1741,7 @@ router.get('/certificados/validar/:codigo', async (req, res, next) => {
     const { codigo } = req.params;
     const { rows } = await db.query(
       `SELECT c.*, cur.titulo AS curso_titulo, cur.carga_horaria,
-              u.nome AS usuario_nome, a.nome AS aluno_nome
+              COALESCE(NULLIF(TRIM(u.nome_certificado), ''), u.nome) AS usuario_nome, a.nome AS aluno_nome
        FROM ead_certificados c
        JOIN ead_matriculas m ON c.matricula_id = m.id
        JOIN ead_cursos cur ON m.curso_id = cur.id
@@ -2527,7 +2538,7 @@ router.get('/certificados/admin/todos', eadAdminMiddleware, async (req, res, nex
   try {
     const { rows } = await db.query(
       `SELECT c.codigo, c.data_emissao, cur.titulo AS curso_titulo, cur.carga_horaria,
-              COALESCE(u.nome, a.nome) AS aluno_nome
+              COALESCE(NULLIF(TRIM(u.nome_certificado), ''), u.nome, a.nome) AS aluno_nome
        FROM ead_certificados c
        JOIN ead_matriculas m ON c.matricula_id = m.id
        JOIN ead_cursos cur ON m.curso_id = cur.id

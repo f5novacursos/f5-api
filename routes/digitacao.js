@@ -361,7 +361,20 @@ router.post('/auth/google', authLimiter, async (req, res, next) => {
   }
 });
 
-router.get('/auth/me', auth, (req, res) => res.json({ user: req.digitacaoUser }));
+router.get('/auth/me', auth, async (req, res, next) => {
+  try {
+    const user = Object.assign({}, req.digitacaoUser);
+    // "Nome no certificado" (definido pelo aluno no Meu Perfil) — só existe em conta web vinculada.
+    if (user.ead_usuario_id) {
+      const { rows } = await db.query(
+        "SELECT NULLIF(TRIM(nome_certificado), '') AS nome_certificado FROM ead_usuarios WHERE id = $1",
+        [user.ead_usuario_id]
+      );
+      user.nome_certificado = (rows[0] && rows[0].nome_certificado) || null;
+    }
+    res.json({ user });
+  } catch (error) { next(error); }
+});
 
 // Heartbeat do F5 Profissional: marca o aluno como online no painel admin (lido em GET /api/ead/alunos).
 router.post('/presenca', auth, async (req, res) => {
@@ -640,7 +653,7 @@ router.get('/certificados/validar/:codigo', async (req, res, next) => {
   try {
     const code = String(req.params.codigo || '').trim();
     const { rows } = await db.query(
-      'SELECT cert.codigo, cert.data_emissao, cur.titulo AS curso, cur.carga_horaria, COALESCE(u.nome, a.nome) AS nome ' +
+      'SELECT cert.codigo, cert.data_emissao, cur.titulo AS curso, cur.carga_horaria, COALESCE(NULLIF(TRIM(u.nome_certificado), \'\'), u.nome, a.nome) AS nome ' +
       'FROM ead_certificados cert ' +
       'JOIN ead_matriculas m ON m.id = cert.matricula_id ' +
       'JOIN ead_cursos cur ON cur.id = m.curso_id AND cur.slug = $2 ' +
