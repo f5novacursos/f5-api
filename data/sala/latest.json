@@ -1,25 +1,27 @@
 {
-  "versao": "0.9.48",
-  "sha256": "1e0b97a0c8a52a64b343d76dc1b51edbfa54949488183ba92e118c2bcd2349e8",
-  "tamanho": 2480820,
+  "versao": "0.9.49",
+  "sha256": "19ff7606574d999a9aacb0f3abda1f8121410a12eea959450d6becd54b3ef9de",
+  "tamanho": 2527773,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-18T21:34:33.574Z",
+  "publicadoEm": "2026-11-18T22:21:53.997Z",
   "novidades": [
     {
-      "versao": "0.9.48",
-      "titulo": "Telas reorganizadas: Início, Turmas, Ao vivo e Desktop do aluno",
+      "versao": "0.9.49",
+      "titulo": "Backup automático, tour, Ajustes novos e desinstalar programas",
       "itens": [
-        "Início: \"Sua sala\" com os computadores em cartõezinhos (nome, bolinha verde e escudo), \"Sua aula\" mais enxuta e os indicadores (sites, programas, modo, pedidos de ajuda) logo abaixo, em vez de escondidos no fim.",
-        "Turmas: as turmas viram cartões em grade (faixa colorida, selo Aberta/Em aula/Encerrada, dias, horário e alunos). \"Ver alunos\" abre a lista da turma e o lápis ✏️ abre a edição numa janela (Duplicar, Encerrar e Excluir ficam lá dentro).",
-        "Cadastro dos alunos: escolha a turma e veja os alunos dela na hora (com busca); as respostas dos alunos chegam em cartões com e-mail, WhatsApp e situação.",
-        "Ao vivo: agora tem 4 abas — Print e gravação, Trabalho em grupo, Sala de visitantes e Ronda. Print e gravação lado a lado, com as gravações logo abaixo.",
-        "Gravação de ÁREA: enquanto grava, o resto da tela escurece e a área escolhida fica com uma borda vermelha (isso não aparece no vídeo).",
-        "Desktop do aluno: 3 abas (Papel de parede e ícones, Atalhos, Padrão da mesa). No Padrão da mesa, os programas viram cartõezinhos para marcar, com as ações no alto.",
-        "Manutenção: Aparência e ajustes agora tem um cartão para cada grupo (Mouse, Teclado, Tela e energia, Som, Tema e cor, Ícones), cada um com o seu botão Aplicar. Configuração da sala em 3 colunas. Downloads, Lixeira e Fim da aula agora aparecem em \"Resultados dos pedidos\".",
-        "Listas padrão: a lista de sites já vem com os 519 sites que você montou (tudo bloqueado), os pacotes de jogos, vídeos, IA e adultos ganharam os sites novos, e o Chrome já fica na lista de programas a bloquear (o bloqueio continua desligado em Aula livre).",
-        "Ponteiro do mouse: o tamanho agora também ajusta o tamanho em pixels do Windows (antes só gravava o nível e não mudava na tela). Precisa testar no aluno.",
-        "O nome do professor aparece só com o nome da pessoa (sem \"Prof.\" na frente).",
-        "Instalar programa: ao escolher um .exe, o campo de parâmetros abre sozinho."
+        "Backup: aba própria em Ajustes, bem explicada. Backup SEMANAL automático por e-mail (você confirma o e-mail uma vez com um código), cópia diária no computador (Documentos\\F5 Sala\\Backups, as últimas 14) e restauração que deixa escolher O QUE trazer de volta (turmas, provas, listas, modos...) e se é para juntar ou substituir. Aparece um aviso no topo quando faz tempo sem backup fora do computador.",
+        "Tour guiado: mostra os recursos principais em 2 minutos. Aparece na primeira abertura (pergunta antes) e dá para refazer a qualquer hora no botão ❓ Tour, no topo.",
+        "Ajustes: abas em botões com a aberta destacada, uma explicação no topo de cada aba e os Modos de aula em cartões que dizem o que cada modo faz.",
+        "Manutenção: novo cartão \"Desinstalar programa\" — procura e desinstala pelo nome (Opera, Firefox...) em todos os alunos, sem janelas. Programas do Windows, drivers e o próprio F5 Sala são protegidos. Precisa do instalador novo nos alunos (uma vez).",
+        "Aplicativos: tela refeita. No alto, dois cartões separados — \"Bloquear programas\" (a chave) e \"Instalar programas\" (o cadeado de instalação). Abaixo, 3 colunas: Jogos do Windows | Bloqueados | Liberados. Agora dá para \"+ Adicionar jogo\" na coluna dos jogos do Windows, e a montagem da lista com IA ficou recolhida no fim.",
+        "Início: a \"Atualização dos alunos\" agora fica ao lado de \"Recursos ligados\" (sem buraco).",
+        "Turmas: o cabeçalho \"Minhas turmas\" virou uma barra no padrão dos outros cartões, com as opções em botõezinhos.",
+        "Botões do topo (Desktop do aluno, Turmas, Ao vivo): o da tela aberta agora fica bem marcado em azul.",
+        "Teclado: novas opções em Aparência e ajustes → Teclado — \"Desligar Caps Lock\" e \"Deixar o teclado em Português (Brasil ABNT2)\" (tira outros layouts). São ações na hora; \"Voltar ao que cada aluno tinha\" não as desfaz. Precisa testar no aluno.",
+        "Cadastro dos alunos: as respostas ainda não adicionadas ficam guardadas (não somem ao fechar o programa) e sempre entram na turma para a qual o cadastro foi pedido.",
+        "A lista padrão de sites ficou mais enxuta (485 sites): saíram os que são normais em aula — e-mail (Gmail, Outlook, Hotmail, Yahoo...), sorteadores (roda de nomes, random.org), encurtadores (bit.ly, tinyurl, linktree), Mercado Pago, ferramentas de rede (WireGuard, OpenVPN, \"qual é meu IP\"), ABCya e Math Playground, Vimeo e Imgur. E-mails descartáveis, VPNs, proxies, apostas, jogos e piratas continuam bloqueados.",
+        "Inteligência artificial: IAs de uso comum (Hugging Face, Mistral, Phind, you.com, Pi...) entram em \"Mais IAs\", liberadas como o resto do pacote. Chats de personagem e companhia continuam bloqueados.",
+        "Quem já tinha a lista antiga perde, uma vez só, o que saiu na revisão (só o que estava bloqueado; o que você liberou fica como está)."
       ]
     }
   ]

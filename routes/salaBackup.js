@@ -125,4 +125,80 @@ router.post('/backup', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------------------------------------------------------------------------------------------------------------------------------
+// BACKUP SEMANAL AUTOMÁTICO: o professor confirma o e-mail UMA vez com o código e recebe uma AUTORIZAÇÃO (token assinado, 400 dias)
+// que só vale para aquele e-mail. Com ela o programa manda o backup toda semana sem pedir código. Mesmo roubada, a autorização só
+// consegue mandar e-mail para o próprio dono do endereço (e no máximo 3 por dia). Não há banco de dados: o token é verificável pela assinatura.
+const AUTORIZACAO_DIAS = 400;
+const MAX_AUTO_POR_DIA = 3;
+const assinarAuto = (email, exp) => crypto.createHmac('sha256', SEGREDO).update('auto:' + email + '|' + exp).digest('hex');
+function criarToken(email) {
+  const exp = Date.now() + AUTORIZACAO_DIAS * 86400000;
+  return Buffer.from(email + '|' + exp).toString('base64url') + '.' + assinarAuto(email, exp);
+}
+function lerToken(token, email) { // devolve true se o token é válido, não expirou e é deste e-mail
+  const partes = String(token || '').split('.');
+  if (partes.length !== 2) return false;
+  let texto; try { texto = Buffer.from(partes[0], 'base64url').toString('utf8'); } catch { return false; }
+  const i = texto.lastIndexOf('|'); if (i < 1) return false;
+  const emTok = texto.slice(0, i); const exp = Number(texto.slice(i + 1));
+  if (emTok !== email || !Number.isFinite(exp) || exp < Date.now()) return false;
+  const esperado = Buffer.from(assinarAuto(emTok, exp), 'hex'); const recebido = Buffer.from(partes[1], 'hex');
+  return esperado.length === recebido.length && crypto.timingSafeEqual(esperado, recebido);
+}
+// valida o arquivo de backup enviado (base64 de um JSON "f5sala-backup"); devolve { erro, status } ou { base64, ext, base }
+function lerArquivoBackup(arq) {
+  const a = arq || {}; const base64 = String(a.base64 || '');
+  if (!base64 || base64.length > Math.ceil(MAX_BYTES * 4 / 3) + 8) return { status: 413, erro: 'O arquivo é grande demais para enviar por e-mail.' };
+  let texto; try { texto = Buffer.from(base64, 'base64').toString('utf8'); } catch { return { status: 400, erro: 'Arquivo inválido.' }; }
+  if (Buffer.byteLength(texto, 'utf8') > MAX_BYTES) return { status: 413, erro: 'O arquivo é grande demais para enviar por e-mail.' };
+  let conteudo; try { conteudo = JSON.parse(texto); } catch { return { status: 400, erro: 'Este arquivo não é um backup do F5 Sala.' }; }
+  if (!conteudo || conteudo.app !== 'f5sala-backup') return { status: 400, erro: 'Este arquivo não é um backup do F5 Sala.' };
+  const base = String(a.nome || 'Backup F5 Sala').replace(/\.[a-z0-9]+$/i, '').replace(/[^\p{L}\p{N} ._()\-]/gu, '_').replace(/^\.+/, '').slice(0, 80).trim() || 'Backup F5 Sala';
+  return { base64, ext: 'f5backup', base };
+}
+
+// POST /api/sala/backup-autorizar  { email, codigo }  → confere o código e devolve a autorização do envio semanal
+router.post('/backup-autorizar', (req, res) => {
+  const b = req.body || {};
+  const email = normalizar(b.email);
+  const codigo = String(b.codigo || '').replace(/\D/g, '');
+  if (!emailOk(email) || codigo.length !== 6) return res.status(400).json({ error: 'Informe o e-mail e o código de 6 dígitos.' });
+  if (!limitar('aut-ip:' + req.ip, 30, 3600000)) return res.status(429).json({ error: 'Muitas tentativas. Tente de novo daqui a pouco.' });
+  const c = codigos.get(email);
+  if (!c || c.expira < Date.now()) return res.status(400).json({ error: 'O código expirou ou não foi pedido. Peça um código novo.' });
+  if (c.tentativas >= MAX_TENTATIVAS) { codigos.delete(email); return res.status(429).json({ error: 'Muitas tentativas. Peça um código novo.' }); }
+  const esperado = Buffer.from(c.hash, 'hex'); const recebido = Buffer.from(hash(email, codigo), 'hex');
+  if (esperado.length !== recebido.length || !crypto.timingSafeEqual(esperado, recebido)) { c.tentativas++; return res.status(400).json({ error: 'Código incorreto.' }); }
+  codigos.delete(email); // o código vale uma vez só
+  res.json({ ok: true, token: criarToken(email), dias: AUTORIZACAO_DIAS });
+});
+
+// POST /api/sala/backup-auto  { email, token, nome, arquivo: { nome, base64 } }  → manda o backup semanal (sem código), só para o próprio e-mail
+router.post('/backup-auto', async (req, res) => {
+  if (!RESEND_API_KEY) return res.status(503).json({ error: 'O envio por e-mail ainda não está disponível.' });
+  const b = req.body || {};
+  const email = normalizar(b.email);
+  if (!emailOk(email)) return res.status(400).json({ error: 'E-mail inválido.' });
+  if (!limitar('auto-ip:' + req.ip, 30, 3600000)) return res.status(429).json({ error: 'Muitos envios. Tente de novo daqui a pouco.' });
+  if (!lerToken(b.token, email)) return res.status(401).json({ error: 'A autorização do envio automático expirou ou não vale para este e-mail. Ative de novo na aba Backup.', reautorizar: true });
+  if (!limitar('auto-em:' + email, MAX_AUTO_POR_DIA, 86400000)) return res.status(429).json({ error: 'Limite de envios por dia atingido. Tente amanhã.' });
+  const a = lerArquivoBackup(b.arquivo);
+  if (a.erro) return res.status(a.status).json({ error: a.erro });
+  const nome = String(b.nome || '').split(' ')[0].slice(0, 40) || 'professor';
+  try {
+    await enviarResend({
+      to: [email],
+      subject: 'Backup semanal dos seus dados do F5 Sala',
+      html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;color:#0a1628"><h2>Olá, ${escapar(nome)}!</h2><p>Este é o seu <strong>backup semanal</strong> do F5 Sala, em anexo: turmas, alunos, chamadas, provas, listas e modos de aula.</p><p><strong>Guarde este e-mail.</strong> Se você trocar de notebook ou precisar reinstalar tudo: instale o F5 Sala, cadastre-se com este e-mail e use <em>Ajustes → Backup → Restaurar um backup</em>, escolhendo o arquivo anexo.</p><p style="color:#64748b;font-size:13px">Você pode desligar o envio semanal quando quiser em Ajustes → Backup.</p></div>`,
+      text: 'Backup semanal dos seus dados do F5 Sala em anexo. Para recuperar: instale o F5 Sala, cadastre-se com este e-mail e use Ajustes > Backup > Restaurar um backup.',
+      attachments: [{ filename: `${a.base}.${a.ext}`, content: a.base64 }],
+    });
+  } catch (e) {
+    console.error('[sala] falha ao enviar backup semanal:', e.message);
+    return res.status(502).json({ error: 'Não consegui enviar o e-mail agora. O programa tenta de novo mais tarde.' });
+  }
+  res.json({ ok: true });
+});
+
 module.exports = router;
