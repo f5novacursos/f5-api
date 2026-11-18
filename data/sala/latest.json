@@ -1,15 +1,18 @@
 {
-  "versao": "0.9.43",
-  "sha256": "233506434eea49ddb8a823c0ab04e2dec420ac6efec1433b001fe59cab5d8428",
-  "tamanho": 2409582,
+  "versao": "0.9.44",
+  "sha256": "554682b68cb8392d6c7246e77eeaae73e5f6166aa4e92e8f8b80cbe9ae2f63f4",
+  "tamanho": 2415845,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-18T03:43:32.936Z",
+  "publicadoEm": "2026-11-18T03:49:42.247Z",
   "novidades": [
     {
-      "versao": "0.9.43",
-      "titulo": "Topo mais compacto",
+      "versao": "0.9.44",
+      "titulo": "Diário em colunas organizadas, senha do ajudante mais limpa e seleção mais fácil",
       "itens": [
-        "Modo da sala e \"Ações em\" menores: tudo cabe numa linha em monitores pequenos (o lápis de editar modos não cai mais para a linha de baixo)."
+        "Turmas → Diário e frequência: grade alinhada (nomes fixos à esquerda, uma coluna de 54 px por dia, com o dia da semana). Os dias de aula da turma sem chamada aparecem com um ponto (clique para lançar) e os 3 próximos dias de aula já aparecem em cinza.",
+        "Manutenção: o bloco de liberar com a senha ficou numa barra compacta (a explicação foi para \"Como funciona\").",
+        "Clicar no espaço em branco de qualquer tela limpa a seleção de alunos.",
+        "Enviar link/texto: cada item da lista tem um ✕ e há o botão \"Limpar a lista\"."
       ]
     }
   ]
