@@ -1,17 +1,16 @@
 {
-  "versao": "0.9.45",
-  "sha256": "5d160053ba11bbe81956f6f6b906a45fd042d7bf9479381faed6047658175739",
-  "tamanho": 2431198,
+  "versao": "0.9.46",
+  "sha256": "39e9e5a4f38fdd52745c0ad021dd7e375f49fe215a4f614ab7f121e8c512430b",
+  "tamanho": 2435033,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-18T03:57:33.203Z",
+  "publicadoEm": "2026-11-18T04:02:55.600Z",
   "novidades": [
     {
-      "versao": "0.9.45",
-      "titulo": "Cadastro dos alunos com WhatsApp e e-mail conferido",
+      "versao": "0.9.46",
+      "titulo": "Turmas mais bonitas",
       "itens": [
-        "Cadastro dos alunos: novo campo opcional de WhatsApp/telefone, com máscara (83) 99999-9999 e conferência do DDD. Os alunos precisam da versão nova (Atualizar alunos).",
-        "E-mail conferido na hora: campo fica vermelho com espaço, falta de @ ou final errado, e sugere o certo em erros comuns (gmial, hotmial, .con, gmail.com.br...).",
-        "Turmas → Cadastro: lista de contatos da turma com botão 💬 WhatsApp (abre a conversa), e a lista de alunos da turma agora aceita \"Nome, e-mail, WhatsApp\" e avisa o que está errado antes de salvar."
+        "Turmas: cada turma é um cartão com inicial colorida, etiquetas (sala, dias, horário, alunos) e botões em uma linha só (Editar, Duplicar, Encerrar, e Excluir separado em vermelho).",
+        "Nova turma / Editar turma: formulário em blocos (dados, dias da aula, alunos), com os dias da semana como botões em vez do quadradinho."
       ]
     }
   ]
