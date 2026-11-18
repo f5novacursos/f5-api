@@ -1,16 +1,20 @@
 {
-  "versao": "0.9.38",
-  "sha256": "72866d1ee27f25b4b8d2156f1b1abb30415036391e690095b650a92477570e12",
-  "tamanho": 2128226,
+  "versao": "0.9.41",
+  "sha256": "e9337e077dcbece06636f5e0c26e54706beed52eae9df6230df11fd534191a51",
+  "tamanho": 2406544,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-17T21:11:21.748Z",
+  "publicadoEm": "2026-11-18T02:57:46.264Z",
   "novidades": [
     {
-      "versao": "0.9.38",
-      "titulo": "Bloqueio de emuladores de Android mais completo",
+      "versao": "0.9.41",
+      "titulo": "Manutenção da sala, aparência do Windows e telas reorganizadas",
       "itens": [
-        "Pacote \"Emuladores de Android\" (em Jogos) ampliado: BlueStacks, LDPlayer, Nox, MEmu, MuMu, GameLoop, Genymotion, KoPlayer, Android na nuvem (now.gg, Appetize...) e os sites de download, com todos os endereços e programas de cada um.",
-        "Novo serviço \"Sites de download de programas\" (Softonic, Filehippo, Malavida, Baixaki...). Como os outros, dá para liberar só ele quando precisar."
+        "Manutenção: renomear computadores, grupo de trabalho, instalar programas, hora e fuso, desativar/reativar o Windows Defender e desinstalar o F5 Sala (tudo pelo ajudante do sistema, liberado com a senha de instalação).",
+        "Ajustes do computador: tema claro/escuro, cor do Windows, ícones da área de trabalho (pasta do usuário, Este Computador, Lixeira, Rede), tamanho dos ícones, tela que não apaga e computador que não suspende.",
+        "Organizar ícones agora segue uma ordem fixa: pasta do usuário, Este Computador, Lixeira, Chrome, Word, Excel, PowerPoint.",
+        "Turmas em abas (Turma e aula, Chamada, Cadastro, Diário), turmas por sala, aula esquecida encerra sozinha e botão Encerrar aula.",
+        "Sala de visitantes (notebook pessoal pelo navegador) e visitantes na tela Alunos; topo do painel numa linha só.",
+        "Proteção contra desinstalação pelo aluno e vigia de instalação de programas."
       ]
     }
   ]
