@@ -1,16 +1,15 @@
 {
-  "versao": "0.9.42",
-  "sha256": "265e9e80e0b4ad1e529e8b39304c8451833bcc7907dda3a5dbedcaa737131494",
-  "tamanho": 2409086,
+  "versao": "0.9.43",
+  "sha256": "233506434eea49ddb8a823c0ab04e2dec420ac6efec1433b001fe59cab5d8428",
+  "tamanho": 2409582,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-18T03:32:59.080Z",
+  "publicadoEm": "2026-11-18T03:43:32.936Z",
   "novidades": [
     {
-      "versao": "0.9.42",
-      "titulo": "Modo da sala mais curto e data/hora para todos",
+      "versao": "0.9.43",
+      "titulo": "Topo mais compacto",
       "itens": [
-        "Modo da sala: nomes mais curtos (\"Prática\" e \"Atenção\") para caber numa linha só.",
-        "Manutenção → Data, hora e fuso horário: dá para copiar a data e a hora do computador do professor (ou digitar) para todos os computadores de uma vez, além do fuso e da hora pela internet. Precisa do instalador novo nos alunos uma vez."
+        "Modo da sala e \"Ações em\" menores: tudo cabe numa linha em monitores pequenos (o lápis de editar modos não cai mais para a linha de baixo)."
       ]
     }
   ]
