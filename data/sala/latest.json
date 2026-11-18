@@ -1,20 +1,16 @@
 {
-  "versao": "0.9.41",
-  "sha256": "e9337e077dcbece06636f5e0c26e54706beed52eae9df6230df11fd534191a51",
-  "tamanho": 2406544,
+  "versao": "0.9.42",
+  "sha256": "265e9e80e0b4ad1e529e8b39304c8451833bcc7907dda3a5dbedcaa737131494",
+  "tamanho": 2409086,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-18T02:57:46.264Z",
+  "publicadoEm": "2026-11-18T03:32:59.080Z",
   "novidades": [
     {
-      "versao": "0.9.41",
-      "titulo": "Manutenção da sala, aparência do Windows e telas reorganizadas",
+      "versao": "0.9.42",
+      "titulo": "Modo da sala mais curto e data/hora para todos",
       "itens": [
-        "Manutenção: renomear computadores, grupo de trabalho, instalar programas, hora e fuso, desativar/reativar o Windows Defender e desinstalar o F5 Sala (tudo pelo ajudante do sistema, liberado com a senha de instalação).",
-        "Ajustes do computador: tema claro/escuro, cor do Windows, ícones da área de trabalho (pasta do usuário, Este Computador, Lixeira, Rede), tamanho dos ícones, tela que não apaga e computador que não suspende.",
-        "Organizar ícones agora segue uma ordem fixa: pasta do usuário, Este Computador, Lixeira, Chrome, Word, Excel, PowerPoint.",
-        "Turmas em abas (Turma e aula, Chamada, Cadastro, Diário), turmas por sala, aula esquecida encerra sozinha e botão Encerrar aula.",
-        "Sala de visitantes (notebook pessoal pelo navegador) e visitantes na tela Alunos; topo do painel numa linha só.",
-        "Proteção contra desinstalação pelo aluno e vigia de instalação de programas."
+        "Modo da sala: nomes mais curtos (\"Prática\" e \"Atenção\") para caber numa linha só.",
+        "Manutenção → Data, hora e fuso horário: dá para copiar a data e a hora do computador do professor (ou digitar) para todos os computadores de uma vez, além do fuso e da hora pela internet. Precisa do instalador novo nos alunos uma vez."
       ]
     }
   ]
