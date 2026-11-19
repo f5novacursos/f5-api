@@ -1,17 +1,16 @@
 {
-  "versao": "0.9.59",
-  "sha256": "4af1347cf77933ed8b138e7ff2c9a6b80d52f56b0da79a89e45f8e340205e4f9",
-  "tamanho": 2573157,
+  "versao": "0.9.60",
+  "sha256": "45d85eddc616be5d2581da78e7ccd8360c9c9be355cf59ba7ff085715a847907",
+  "tamanho": 2573599,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T15:40:27.305Z",
+  "publicadoEm": "2026-11-19T15:53:26.678Z",
   "novidades": [
     {
-      "versao": "0.9.59",
-      "titulo": "Renomear o usuário do Windows com o nome do aluno",
+      "versao": "0.9.60",
+      "titulo": "Ajudante do sistema se conserta quando o acesso à chave é negado",
       "itens": [
-        "Novo card \"Usuário do Windows\" em Manutenção → Configuração da sala: a conta e a pasta (C:\\Users\\…) de cada computador recebem o nome que o aluno tem no F5 Sala (Aluno 01 vira Aluno-01), sem criar usuário novo. Você confere a lista antes.",
-        "Precisa do ajudante da versão nova: os computadores dos alunos precisam do instalador novo uma vez. Teste primeiro em UM computador.",
-        "Só conta local comum: conta Microsoft/online, administrador e nomes reservados são recusados. Se qualquer etapa falhar, tudo volta ao nome antigo."
+        "O ajudante agora registra no log quem ele é e as permissões do arquivo quando recebe \"acesso negado\" ao chave.json, refaz as permissões (SISTEMA e administradores) e tenta de novo, em vez de falhar o pedido.",
+        "Vale só nos computadores com o instalador novo (o ajudante vem no instalador)."
       ]
     }
   ]
