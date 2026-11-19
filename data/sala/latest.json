@@ -1,15 +1,16 @@
 {
-  "versao": "0.9.68",
-  "sha256": "66bd747bd00a18e2d2f874343f444494e68006beacea4ac9cbb7b621f41e1293",
-  "tamanho": 2590598,
+  "versao": "0.9.69",
+  "sha256": "a4d7b4cf368a9ab7360981d3f416647ac5d0f66cacf03a316496a61d4632d2df",
+  "tamanho": 2591457,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T18:53:31.686Z",
+  "publicadoEm": "2026-11-19T20:20:35.773Z",
   "novidades": [
     {
-      "versao": "0.9.68",
-      "titulo": "Aviso do papel de parede (e outras ações) sem texto gigante",
+      "versao": "0.9.69",
+      "titulo": "Iniciar aula direto no cartão da turma e botões da barra separados",
       "itens": [
-        "O aviso \"Papel de parede trocado: 12 de 16\" não despeja mais o diagnóstico técnico de todos os alunos. Mostra só o detalhe curto de quem falhou; o texto completo de cada aluno continua no registro."
+        "Cada cartão em \"Minhas turmas\" ganhou o botão \"▶ Iniciar aula\" (aparece quando nenhuma aula está em andamento). Com a aula iniciada, só a turma em aula mostra \"⏹ Encerrar aula\".",
+        "Na barra de ícones, os botões ligados (azuis) vizinhos não ficam mais colados: agora há um espaço entre eles."
       ]
     }
   ]
