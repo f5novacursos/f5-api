@@ -1,16 +1,17 @@
 {
-  "versao": "0.9.55",
-  "sha256": "1c66f112d8de1288adbd9931468944fae6f2e17e3e4360ec73775a1c44737389",
-  "tamanho": 2559410,
+  "versao": "0.9.56",
+  "sha256": "cd20db44a615e11581df6b20a8fc9ca7f5cc5c2f1a269f7b84a05c5b6fc601d1",
+  "tamanho": 2562008,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T14:42:11.679Z",
+  "publicadoEm": "2026-11-19T14:48:52.503Z",
   "novidades": [
     {
-      "versao": "0.9.55",
-      "titulo": "Papel de parede não derruba mais o aluno",
+      "versao": "0.9.56",
+      "titulo": "Barra do aluno: dá para religar em quem ficou sem",
       "itens": [
-        "Corrigido o erro \"EBUSY: resource busy or locked\" ao trocar o papel de parede: a imagem agora chega com nome novo a cada envio (o Windows podia estar usando a anterior) e as antigas são apagadas depois.",
-        "O programa do aluno não mostra mais a janela \"A JavaScript error occurred in the main process\" nem fecha por erro inesperado: o aluno continua na sala e o problema fica registrado."
+        "O botão \"Barra do aluno\" agora olha o estado de QUEM vai receber (selecionados ou todos): se todos já têm a barra, esconde; se algum está sem, mostra em todos. Antes, com alunos selecionados ele sempre mandava esconder e não dava para religar.",
+        "O botão mostra \"ligada\", \"desligada\" ou \"2/3 ligadas\", e o aviso diz o nome dos alunos afetados.",
+        "Novo no clique direito do aluno: \"🪪 Mostrar a barra\" e \"🙈 Esconder a barra\" (valem para o aluno ou para todos os selecionados)."
       ]
     }
   ]
