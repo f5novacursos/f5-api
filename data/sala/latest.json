@@ -1,15 +1,17 @@
 {
-  "versao": "0.9.58",
-  "sha256": "516b29a4261e5f0ca76b3b46ae6a84207c09bcd4b723c27b49eacf88a688ec9c",
-  "tamanho": 2567117,
+  "versao": "0.9.59",
+  "sha256": "4af1347cf77933ed8b138e7ff2c9a6b80d52f56b0da79a89e45f8e340205e4f9",
+  "tamanho": 2573157,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T15:10:13.133Z",
+  "publicadoEm": "2026-11-19T15:40:27.305Z",
   "novidades": [
     {
-      "versao": "0.9.58",
-      "titulo": "Topo mais limpo: \"Ações em\" junto da contagem de alunos",
+      "versao": "0.9.59",
+      "titulo": "Renomear o usuário do Windows com o nome do aluno",
       "itens": [
-        "O chip \"Ações em: todos (18)\" saiu do topo (ocupava espaço e repetia a informação). Agora aparece na mesma linha de \"18 aluno(s) encontrado(s) na sala…\": \"· Ações em: todos (18)\". Com alunos selecionados, mostra \"Ações em: 2 aluno(s)\"."
+        "Novo card \"Usuário do Windows\" em Manutenção → Configuração da sala: a conta e a pasta (C:\\Users\\…) de cada computador recebem o nome que o aluno tem no F5 Sala (Aluno 01 vira Aluno-01), sem criar usuário novo. Você confere a lista antes.",
+        "Precisa do ajudante da versão nova: os computadores dos alunos precisam do instalador novo uma vez. Teste primeiro em UM computador.",
+        "Só conta local comum: conta Microsoft/online, administrador e nomes reservados são recusados. Se qualquer etapa falhar, tudo volta ao nome antigo."
       ]
     }
   ]
