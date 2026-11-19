@@ -1,17 +1,16 @@
 {
-  "versao": "0.9.54",
-  "sha256": "62859ec999bebadac0178fcbca33cee65f8405702bc9aa4317c5ba1b83e20187",
-  "tamanho": 2557518,
+  "versao": "0.9.55",
+  "sha256": "1c66f112d8de1288adbd9931468944fae6f2e17e3e4360ec73775a1c44737389",
+  "tamanho": 2559410,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T14:37:52.191Z",
+  "publicadoEm": "2026-11-19T14:42:11.679Z",
   "novidades": [
     {
-      "versao": "0.9.54",
-      "titulo": "Alunos da turma em tabela organizada",
+      "versao": "0.9.55",
+      "titulo": "Papel de parede não derruba mais o aluno",
       "itens": [
-        "Ao criar ou editar uma turma, os alunos aparecem numa tabela: nome, e-mail e WhatsApp em colunas, numerados, com ✕ para tirar. Clique em qualquer campo para editar.",
-        "➕ Adicionar aluno acrescenta uma linha; 📋 Colar lista abre a caixa para colar de planilha ou WhatsApp e joga tudo na tabela (repetidos não entram).",
-        "Campo com erro (e-mail digitado errado, telefone incompleto, nome repetido) fica vermelho, e o app barra o salvamento até você corrigir."
+        "Corrigido o erro \"EBUSY: resource busy or locked\" ao trocar o papel de parede: a imagem agora chega com nome novo a cada envio (o Windows podia estar usando a anterior) e as antigas são apagadas depois.",
+        "O programa do aluno não mostra mais a janela \"A JavaScript error occurred in the main process\" nem fecha por erro inesperado: o aluno continua na sala e o problema fica registrado."
       ]
     }
   ]
