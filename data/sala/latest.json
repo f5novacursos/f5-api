@@ -1,15 +1,16 @@
 {
-  "versao": "0.9.65",
-  "sha256": "2d46900ca418d7e9b3eefdc655addd3ac58409ef27b271360e49a86df08527a1",
-  "tamanho": 2587150,
+  "versao": "0.9.66",
+  "sha256": "c82f5d613adb50ef505a3fd1e4d0cfd1c589dbce4259b9c70825c4ac4e0380bb",
+  "tamanho": 2588680,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T17:49:38.412Z",
+  "publicadoEm": "2026-11-19T18:12:20.156Z",
   "novidades": [
     {
-      "versao": "0.9.65",
-      "titulo": "Topo limpo: a aula em andamento virou um botão na barra de ícones",
+      "versao": "0.9.66",
+      "titulo": "Faixa \"Juntar todos\" e tabela de alunos mais legível",
       "itens": [
-        "O nome da turma em aula saiu do topo (era comprido e quebrava o layout). Agora há o botão \"Aula ativa · encerrar\" logo depois de \"Barra do aluno\", que só aparece com a aula em andamento. Passe o mouse para ver o nome da turma; clique para encerrar a aula."
+        "Quando há alunos parecidos na turma, aparece uma faixa amarela logo acima da tabela com o botão \"🔀 Juntar todos\" (mostra a lista dos pares antes de juntar). O botão também continua no cabeçalho, ao lado de \"Adicionar aluno\".",
+        "Na tabela, o nome do aluno fica em cima e as etiquetas (\"parece com…\", \"repetido\") embaixo, sem quebrar o nome em várias linhas."
       ]
     }
   ]
