@@ -1,16 +1,17 @@
 {
-  "versao": "0.9.53",
-  "sha256": "7ff1fd6e25fb639cb393db37c0d3d5b696eeba267c2b62bd56c91a19d658448a",
-  "tamanho": 2548350,
+  "versao": "0.9.54",
+  "sha256": "62859ec999bebadac0178fcbca33cee65f8405702bc9aa4317c5ba1b83e20187",
+  "tamanho": 2557518,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T14:32:34.205Z",
+  "publicadoEm": "2026-11-19T14:37:52.191Z",
   "novidades": [
     {
-      "versao": "0.9.53",
-      "titulo": "Renomear computadores com o nome do F5 Sala",
+      "versao": "0.9.54",
+      "titulo": "Alunos da turma em tabela organizada",
       "itens": [
-        "Novo botão \"🪪 Usar o nome do F5 Sala\" em Manutenção → Configuração da sala → Renomear os computadores: cada PC recebe o mesmo nome que tem no F5 Sala (ALUNO-01 vira ALUNO-01; acentos e espaços são ajustados). Você confere e edita antes de aplicar.",
-        "Dois computadores com o mesmo nome agora são barrados antes de renomear."
+        "Ao criar ou editar uma turma, os alunos aparecem numa tabela: nome, e-mail e WhatsApp em colunas, numerados, com ✕ para tirar. Clique em qualquer campo para editar.",
+        "➕ Adicionar aluno acrescenta uma linha; 📋 Colar lista abre a caixa para colar de planilha ou WhatsApp e joga tudo na tabela (repetidos não entram).",
+        "Campo com erro (e-mail digitado errado, telefone incompleto, nome repetido) fica vermelho, e o app barra o salvamento até você corrigir."
       ]
     }
   ]
