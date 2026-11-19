@@ -1,18 +1,15 @@
 {
-  "versao": "0.9.63",
-  "sha256": "c02cf5e10fa922c102939e130d873da8f1018ae70c63cb6af12f402c19f3793d",
-  "tamanho": 2584542,
+  "versao": "0.9.64",
+  "sha256": "fc556231ce843c5e63ddf078bd594d4b96fe518928257bee37feefb51baf1af3",
+  "tamanho": 2586273,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T17:04:04.919Z",
+  "publicadoEm": "2026-11-19T17:15:30.621Z",
   "novidades": [
     {
-      "versao": "0.9.63",
-      "titulo": "Cadastro sem bagunça: reconhece nomes parecidos e dá para juntar",
+      "versao": "0.9.64",
+      "titulo": "Ao fechar o programa, a aula em andamento termina junto",
       "itens": [
-        "Resposta de cadastro com nome parecido com um aluno que já está na turma (ex.: \"Eliane Falcao\" x \"Eliane dos Santos Falcao\") não entra mais como aluno novo: aparece como \"🔀 Parece com aluno da turma\", com os botões \"Juntar com o da turma\" ou \"Adicionar como novo\". O \"Adicionar todos os novos\" não mexe nesses.",
-        "Na tabela de alunos da turma, nomes parecidos ficam marcados com \"🔀 parece com…\" e têm o botão \"🔀 Juntar\". Fica um cadastro só, com o nome mais completo e o e-mail/WhatsApp dos dois.",
-        "Novo botão \"🔀 Juntar parecidos (N)\" ao lado de \"Adicionar aluno\": mostra a lista dos pares e junta todos de uma vez. Irmãos com nomes diferentes (Gizelly e Girlane) não são confundidos.",
-        "\"Pedir cadastro agora\" para a turma toda não pergunta de novo a quem já respondeu (para repetir a alguém, selecione o aluno). E se a conexão piscar, o aluno que já respondeu não vê o formulário outra vez: o app só reenvia a resposta."
+        "Antes, ao fechar e abrir o painel do professor a turma continuava \"Em aula\", mas a barra dos alunos já tinha perdido o título e era preciso encerrar e iniciar de novo. Agora, ao fechar o programa a aula é encerrada sozinha: vai para o histórico (com a presença já marcada) e a barra dos alunos é limpa. Ao abrir, é só clicar em \"Iniciar aula\"."
       ]
     }
   ]
