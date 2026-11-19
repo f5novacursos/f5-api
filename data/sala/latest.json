@@ -1,17 +1,16 @@
 {
-  "versao": "0.9.56",
-  "sha256": "cd20db44a615e11581df6b20a8fc9ca7f5cc5c2f1a269f7b84a05c5b6fc601d1",
-  "tamanho": 2562008,
+  "versao": "0.9.57",
+  "sha256": "698a84eb5e994292025da8c213dca30a3de595280ed18c21abbac50c895633b9",
+  "tamanho": 2566171,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T14:48:52.503Z",
+  "publicadoEm": "2026-11-19T15:05:50.822Z",
   "novidades": [
     {
-      "versao": "0.9.56",
-      "titulo": "Barra do aluno: dá para religar em quem ficou sem",
+      "versao": "0.9.57",
+      "titulo": "Lista de alunos da turma em tabela, com botão de adicionar no canto",
       "itens": [
-        "O botão \"Barra do aluno\" agora olha o estado de QUEM vai receber (selecionados ou todos): se todos já têm a barra, esconde; se algum está sem, mostra em todos. Antes, com alunos selecionados ele sempre mandava esconder e não dava para religar.",
-        "O botão mostra \"ligada\", \"desligada\" ou \"2/3 ligadas\", e o aviso diz o nome dos alunos afetados.",
-        "Novo no clique direito do aluno: \"🪪 Mostrar a barra\" e \"🙈 Esconder a barra\" (valem para o aluno ou para todos os selecionados)."
+        "Na aba Cadastro dos alunos, a lista agora é uma tabela em colunas: #, Aluno, E-mail, WhatsApp e Edição (botão Editar para alterar ou excluir da turma). Repetido e e-mail errado aparecem destacados.",
+        "O botão \"➕ Adicionar aluno\" ficou no canto direito, ao lado da busca; ele abre e fecha o formulário de cadastro manual."
       ]
     }
   ]
