@@ -1,17 +1,16 @@
 {
-  "versao": "0.9.50",
-  "sha256": "cae4e9e1a0eecf04158776f5f6e9743bc19de674a42f6074814fe7033ac92ef1",
-  "tamanho": 2532314,
+  "versao": "0.9.51",
+  "sha256": "f6d6d1a5157ee6155ffe35664684b01b65ab98dd224a84b273237dbf83e00ab4",
+  "tamanho": 2535711,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T13:29:03.311Z",
+  "publicadoEm": "2026-11-19T13:47:42.207Z",
   "novidades": [
     {
-      "versao": "0.9.50",
-      "titulo": "Cadastro dos alunos: não fecha sozinho e dá para cadastrar pelo painel",
+      "versao": "0.9.51",
+      "titulo": "Atualização dos alunos sem erro e sem avisos piscando",
       "itens": [
-        "A janela de cadastro do aluno não fecha mais quando a conexão dá uma piscada: ele não perde o que já digitou. Ela espera até 3 minutos pelo seu painel voltar (e fecha na hora quando VOCÊ encerra o pedido).",
-        "Novo \"➕ Adicionar aluno manualmente\" na aba Cadastro dos alunos: para quem chegou depois ou está sem computador. Entra na turma escolhida, com as mesmas conferências de e-mail e WhatsApp.",
-        "Pedir cadastro agora vale só para os alunos que estiverem SELECIONADOS na tela Alunos (sem seleção, vai para todos). E pedir de novo não apaga mais as respostas que ainda não foram adicionadas (só avisa se forem de outra turma)."
+        "Corrigido o aviso vermelho \"ENOENT ... rename app.asar.parcial -> app.asar.novo\" que aparecia para vários alunos: o painel estava mandando a atualização duas vezes quase juntas para o mesmo computador, e as duas disputavam o mesmo arquivo. Agora o painel nunca manda duas vezes ao mesmo computador (o controle é por computador, e não pelo número da conexão que muda a cada reconexão) e o aluno protege a transferência que está valendo, usa um arquivo temporário para cada uma e não baixa de novo o pacote que já está esperando o atualizador.",
+        "Os avisos vermelhos da atualização não ficam mais trocando: no máximo um a cada 8 segundos, e \"já está recebendo\" não conta como erro. O estado de cada aluno continua na lista do Início."
       ]
     }
   ]
