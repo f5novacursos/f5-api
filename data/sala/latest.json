@@ -1,16 +1,15 @@
 {
-  "versao": "0.9.66",
-  "sha256": "c82f5d613adb50ef505a3fd1e4d0cfd1c589dbce4259b9c70825c4ac4e0380bb",
-  "tamanho": 2588680,
+  "versao": "0.9.67",
+  "sha256": "ecbecbb33bf19faa88ac41997c1aed93181376227ed5a88a8e427caaa03fba86",
+  "tamanho": 2589886,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T18:12:20.156Z",
+  "publicadoEm": "2026-11-19T18:41:36.943Z",
   "novidades": [
     {
-      "versao": "0.9.66",
-      "titulo": "Faixa \"Juntar todos\" e tabela de alunos mais legível",
+      "versao": "0.9.67",
+      "titulo": "Aviso de bloqueio virou um sino depois do Tour",
       "itens": [
-        "Quando há alunos parecidos na turma, aparece uma faixa amarela logo acima da tabela com o botão \"🔀 Juntar todos\" (mostra a lista dos pares antes de juntar). O botão também continua no cabeçalho, ao lado de \"Adicionar aluno\".",
-        "Na tabela, o nome do aluno fica em cima e as etiquetas (\"parece com…\", \"repetido\") embaixo, sem quebrar o nome em várias linhas."
+        "A faixa vermelha \"N aluno(s) tentou abrir algo bloqueado\" saiu do topo (quebrava o layout). Agora aparece um sino 🔔 com o número, logo depois do Tour, só quando há tentativas nos últimos 10 minutos. Clique no sino para ver quem foi, abrir a tela do aluno, marcar \"Já vi\" ou \"Limpar tudo\"."
       ]
     }
   ]
