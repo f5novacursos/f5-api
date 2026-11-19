@@ -1,16 +1,16 @@
 {
-  "versao": "0.9.60",
-  "sha256": "45d85eddc616be5d2581da78e7ccd8360c9c9be355cf59ba7ff085715a847907",
-  "tamanho": 2573599,
+  "versao": "0.9.61",
+  "sha256": "a05d193bc839483cd2fed3e1ecfecbe06e79da310e15d3fc9f208cc33e5de518",
+  "tamanho": 2574108,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T15:53:26.678Z",
+  "publicadoEm": "2026-11-19T16:04:14.803Z",
   "novidades": [
     {
-      "versao": "0.9.60",
-      "titulo": "Ajudante do sistema se conserta quando o acesso à chave é negado",
+      "versao": "0.9.61",
+      "titulo": "Corrigido o \"acesso negado\" do ajudante (renomear, Defender, data e hora)",
       "itens": [
-        "O ajudante agora registra no log quem ele é e as permissões do arquivo quando recebe \"acesso negado\" ao chave.json, refaz as permissões (SISTEMA e administradores) e tenta de novo, em vez de falhar o pedido.",
-        "Vale só nos computadores com o instalador novo (o ajudante vem no instalador)."
+        "Causa achada: ao reinstalar por cima, o instalador deixava o arquivo da chave do ajudante com a lista de permissões vazia (nem o sistema lia). O instalador novo não faz mais isso e conserta os arquivos já afetados.",
+        "O ajudante também se conserta sozinho se encontrar esse problema. Precisa do instalador novo nos computadores dos alunos (uma vez)."
       ]
     }
   ]
