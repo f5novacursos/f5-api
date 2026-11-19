@@ -1,27 +1,17 @@
 {
-  "versao": "0.9.49",
-  "sha256": "19ff7606574d999a9aacb0f3abda1f8121410a12eea959450d6becd54b3ef9de",
-  "tamanho": 2527773,
+  "versao": "0.9.50",
+  "sha256": "cae4e9e1a0eecf04158776f5f6e9743bc19de674a42f6074814fe7033ac92ef1",
+  "tamanho": 2532314,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-18T22:21:53.997Z",
+  "publicadoEm": "2026-11-19T13:29:03.311Z",
   "novidades": [
     {
-      "versao": "0.9.49",
-      "titulo": "Backup automático, tour, Ajustes novos e desinstalar programas",
+      "versao": "0.9.50",
+      "titulo": "Cadastro dos alunos: não fecha sozinho e dá para cadastrar pelo painel",
       "itens": [
-        "Backup: aba própria em Ajustes, bem explicada. Backup SEMANAL automático por e-mail (você confirma o e-mail uma vez com um código), cópia diária no computador (Documentos\\F5 Sala\\Backups, as últimas 14) e restauração que deixa escolher O QUE trazer de volta (turmas, provas, listas, modos...) e se é para juntar ou substituir. Aparece um aviso no topo quando faz tempo sem backup fora do computador.",
-        "Tour guiado: mostra os recursos principais em 2 minutos. Aparece na primeira abertura (pergunta antes) e dá para refazer a qualquer hora no botão ❓ Tour, no topo.",
-        "Ajustes: abas em botões com a aberta destacada, uma explicação no topo de cada aba e os Modos de aula em cartões que dizem o que cada modo faz.",
-        "Manutenção: novo cartão \"Desinstalar programa\" — procura e desinstala pelo nome (Opera, Firefox...) em todos os alunos, sem janelas. Programas do Windows, drivers e o próprio F5 Sala são protegidos. Precisa do instalador novo nos alunos (uma vez).",
-        "Aplicativos: tela refeita. No alto, dois cartões separados — \"Bloquear programas\" (a chave) e \"Instalar programas\" (o cadeado de instalação). Abaixo, 3 colunas: Jogos do Windows | Bloqueados | Liberados. Agora dá para \"+ Adicionar jogo\" na coluna dos jogos do Windows, e a montagem da lista com IA ficou recolhida no fim.",
-        "Início: a \"Atualização dos alunos\" agora fica ao lado de \"Recursos ligados\" (sem buraco).",
-        "Turmas: o cabeçalho \"Minhas turmas\" virou uma barra no padrão dos outros cartões, com as opções em botõezinhos.",
-        "Botões do topo (Desktop do aluno, Turmas, Ao vivo): o da tela aberta agora fica bem marcado em azul.",
-        "Teclado: novas opções em Aparência e ajustes → Teclado — \"Desligar Caps Lock\" e \"Deixar o teclado em Português (Brasil ABNT2)\" (tira outros layouts). São ações na hora; \"Voltar ao que cada aluno tinha\" não as desfaz. Precisa testar no aluno.",
-        "Cadastro dos alunos: as respostas ainda não adicionadas ficam guardadas (não somem ao fechar o programa) e sempre entram na turma para a qual o cadastro foi pedido.",
-        "A lista padrão de sites ficou mais enxuta (485 sites): saíram os que são normais em aula — e-mail (Gmail, Outlook, Hotmail, Yahoo...), sorteadores (roda de nomes, random.org), encurtadores (bit.ly, tinyurl, linktree), Mercado Pago, ferramentas de rede (WireGuard, OpenVPN, \"qual é meu IP\"), ABCya e Math Playground, Vimeo e Imgur. E-mails descartáveis, VPNs, proxies, apostas, jogos e piratas continuam bloqueados.",
-        "Inteligência artificial: IAs de uso comum (Hugging Face, Mistral, Phind, you.com, Pi...) entram em \"Mais IAs\", liberadas como o resto do pacote. Chats de personagem e companhia continuam bloqueados.",
-        "Quem já tinha a lista antiga perde, uma vez só, o que saiu na revisão (só o que estava bloqueado; o que você liberou fica como está)."
+        "A janela de cadastro do aluno não fecha mais quando a conexão dá uma piscada: ele não perde o que já digitou. Ela espera até 3 minutos pelo seu painel voltar (e fecha na hora quando VOCÊ encerra o pedido).",
+        "Novo \"➕ Adicionar aluno manualmente\" na aba Cadastro dos alunos: para quem chegou depois ou está sem computador. Entra na turma escolhida, com as mesmas conferências de e-mail e WhatsApp.",
+        "Pedir cadastro agora vale só para os alunos que estiverem SELECIONADOS na tela Alunos (sem seleção, vai para todos). E pedir de novo não apaga mais as respostas que ainda não foram adicionadas (só avisa se forem de outra turma)."
       ]
     }
   ]
