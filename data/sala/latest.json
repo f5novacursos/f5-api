@@ -1,17 +1,18 @@
 {
-  "versao": "0.9.62",
-  "sha256": "d6d887b8891d4388991e335d90e56eb3de67eef19defa9ae2437f3102cc11cc4",
-  "tamanho": 2575154,
+  "versao": "0.9.63",
+  "sha256": "c02cf5e10fa922c102939e130d873da8f1018ae70c63cb6af12f402c19f3793d",
+  "tamanho": 2584542,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T16:40:53.696Z",
+  "publicadoEm": "2026-11-19T17:04:04.919Z",
   "novidades": [
     {
-      "versao": "0.9.62",
-      "titulo": "Recadastro: completa quem já está na turma, sem duplicar",
+      "versao": "0.9.63",
+      "titulo": "Cadastro sem bagunça: reconhece nomes parecidos e dá para juntar",
       "itens": [
-        "Aluno que já está na turma só com o nome e se cadastra de novo agora aparece como \"Completar cadastro\": o e-mail e o WhatsApp dele entram na linha que já existe, sem criar aluno repetido. Nunca apaga um e-mail que já estava lá.",
-        "A comparação de nome ignora acento, maiúscula e espaço duplo (\"Lúcia\" = \"lucia\"). \"Adicionar todos os novos\" também completa esses.",
-        "Corrigido: o WhatsApp novo de quem já estava na turma podia se perder."
+        "Resposta de cadastro com nome parecido com um aluno que já está na turma (ex.: \"Eliane Falcao\" x \"Eliane dos Santos Falcao\") não entra mais como aluno novo: aparece como \"🔀 Parece com aluno da turma\", com os botões \"Juntar com o da turma\" ou \"Adicionar como novo\". O \"Adicionar todos os novos\" não mexe nesses.",
+        "Na tabela de alunos da turma, nomes parecidos ficam marcados com \"🔀 parece com…\" e têm o botão \"🔀 Juntar\". Fica um cadastro só, com o nome mais completo e o e-mail/WhatsApp dos dois.",
+        "Novo botão \"🔀 Juntar parecidos (N)\" ao lado de \"Adicionar aluno\": mostra a lista dos pares e junta todos de uma vez. Irmãos com nomes diferentes (Gizelly e Girlane) não são confundidos.",
+        "\"Pedir cadastro agora\" para a turma toda não pergunta de novo a quem já respondeu (para repetir a alguém, selecione o aluno). E se a conexão piscar, o aluno que já respondeu não vê o formulário outra vez: o app só reenvia a resposta."
       ]
     }
   ]
