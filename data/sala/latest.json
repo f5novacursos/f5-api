@@ -1,15 +1,15 @@
 {
-  "versao": "0.9.64",
-  "sha256": "fc556231ce843c5e63ddf078bd594d4b96fe518928257bee37feefb51baf1af3",
-  "tamanho": 2586273,
+  "versao": "0.9.65",
+  "sha256": "2d46900ca418d7e9b3eefdc655addd3ac58409ef27b271360e49a86df08527a1",
+  "tamanho": 2587150,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T17:15:30.621Z",
+  "publicadoEm": "2026-11-19T17:49:38.412Z",
   "novidades": [
     {
-      "versao": "0.9.64",
-      "titulo": "Ao fechar o programa, a aula em andamento termina junto",
+      "versao": "0.9.65",
+      "titulo": "Topo limpo: a aula em andamento virou um botão na barra de ícones",
       "itens": [
-        "Antes, ao fechar e abrir o painel do professor a turma continuava \"Em aula\", mas a barra dos alunos já tinha perdido o título e era preciso encerrar e iniciar de novo. Agora, ao fechar o programa a aula é encerrada sozinha: vai para o histórico (com a presença já marcada) e a barra dos alunos é limpa. Ao abrir, é só clicar em \"Iniciar aula\"."
+        "O nome da turma em aula saiu do topo (era comprido e quebrava o layout). Agora há o botão \"Aula ativa · encerrar\" logo depois de \"Barra do aluno\", que só aparece com a aula em andamento. Passe o mouse para ver o nome da turma; clique para encerrar a aula."
       ]
     }
   ]
