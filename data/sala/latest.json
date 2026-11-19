@@ -1,16 +1,17 @@
 {
-  "versao": "0.9.61",
-  "sha256": "a05d193bc839483cd2fed3e1ecfecbe06e79da310e15d3fc9f208cc33e5de518",
-  "tamanho": 2574108,
+  "versao": "0.9.62",
+  "sha256": "d6d887b8891d4388991e335d90e56eb3de67eef19defa9ae2437f3102cc11cc4",
+  "tamanho": 2575154,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T16:04:14.803Z",
+  "publicadoEm": "2026-11-19T16:40:53.696Z",
   "novidades": [
     {
-      "versao": "0.9.61",
-      "titulo": "Corrigido o \"acesso negado\" do ajudante (renomear, Defender, data e hora)",
+      "versao": "0.9.62",
+      "titulo": "Recadastro: completa quem já está na turma, sem duplicar",
       "itens": [
-        "Causa achada: ao reinstalar por cima, o instalador deixava o arquivo da chave do ajudante com a lista de permissões vazia (nem o sistema lia). O instalador novo não faz mais isso e conserta os arquivos já afetados.",
-        "O ajudante também se conserta sozinho se encontrar esse problema. Precisa do instalador novo nos computadores dos alunos (uma vez)."
+        "Aluno que já está na turma só com o nome e se cadastra de novo agora aparece como \"Completar cadastro\": o e-mail e o WhatsApp dele entram na linha que já existe, sem criar aluno repetido. Nunca apaga um e-mail que já estava lá.",
+        "A comparação de nome ignora acento, maiúscula e espaço duplo (\"Lúcia\" = \"lucia\"). \"Adicionar todos os novos\" também completa esses.",
+        "Corrigido: o WhatsApp novo de quem já estava na turma podia se perder."
       ]
     }
   ]
