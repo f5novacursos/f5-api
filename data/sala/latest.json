@@ -1,18 +1,16 @@
 {
-  "versao": "0.9.52",
-  "sha256": "17047ae234e9b3fa213280f00677a466ff8b330262834a42aa53870c6ef0b0db",
-  "tamanho": 2546608,
+  "versao": "0.9.53",
+  "sha256": "7ff1fd6e25fb639cb393db37c0d3d5b696eeba267c2b62bd56c91a19d658448a",
+  "tamanho": 2548350,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T14:05:00.050Z",
+  "publicadoEm": "2026-11-19T14:32:34.205Z",
   "novidades": [
     {
-      "versao": "0.9.52",
-      "titulo": "Alunos da turma: editar, excluir e achar repetidos; avisos ao encerrar",
+      "versao": "0.9.53",
+      "titulo": "Renomear computadores com o nome do F5 Sala",
       "itens": [
-        "Cada aluno da turma ganhou um lápis ✏️: editar nome, e-mail e WhatsApp, ou 🗑 excluir o aluno da turma (com confirmação).",
-        "Cadastro repetido (mesmo e-mail ou mesmo nome) agora aparece com a etiqueta \"⚠️ repetido\", tanto na lista da turma quanto nas respostas que chegaram.",
-        "Ao encerrar pedido de cadastro, chamada, cronômetro ou grupos, aparece um aviso confirmando que foi encerrado (ou dizendo que não havia nada aberto).",
-        "E-mail com erro de digitação em provedores conhecidos (gamil.co, hotmal.com, gmial.com…) agora é pego e o app sugere o correto com um clique, no painel e na janela do aluno."
+        "Novo botão \"🪪 Usar o nome do F5 Sala\" em Manutenção → Configuração da sala → Renomear os computadores: cada PC recebe o mesmo nome que tem no F5 Sala (ALUNO-01 vira ALUNO-01; acentos e espaços são ajustados). Você confere e edita antes de aplicar.",
+        "Dois computadores com o mesmo nome agora são barrados antes de renomear."
       ]
     }
   ]
