@@ -1,16 +1,17 @@
 {
-  "versao": "0.9.72",
-  "sha256": "5c9ca1fe7bbed32afad197728de02d901fc54aa465042ee3d83ab48fd1e37427",
-  "tamanho": 2593391,
+  "versao": "0.9.73",
+  "sha256": "cbcbe6bfd4fcc16c0693746f891e1aa8cf10719a895c11dbed5a2253b3241b68",
+  "tamanho": 2598075,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-23T15:41:04.543Z",
+  "publicadoEm": "2026-11-23T15:54:21.052Z",
   "novidades": [
     {
-      "versao": "0.9.72",
-      "titulo": "Montar prova entende a resposta do ChatGPT (com barras) e o pedido ficou melhor",
+      "versao": "0.9.73",
+      "titulo": "Prova: uma pergunta por vez e a tela fecha sozinha ao encerrar",
       "itens": [
-        "Em Provas, \"Montar a prova\" voltou a funcionar quando o ChatGPT devolve o texto com uma barra no fim de cada linha e \"1\\)\" no lugar de \"1)\". O programa ignora essas barras e monta as questões normalmente.",
-        "O pedido que você copia para o ChatGPT agora pede a resposta em texto puro, dentro de um bloco de código, sem barras, para já vir no formato certo."
+        "Na tela do aluno, a prova mostra uma pergunta por vez, com os botões \"Voltar\" e \"Avançar\" e bolinhas numeradas (azul = respondida) para ir direto a uma questão. Na última pergunta aparece \"Enviar a prova\". Também dá para usar as teclas A, B, C e D para marcar e as setas para mudar de pergunta.",
+        "Ao encerrar a prova (ou quando o aluno envia), a nota aparece e a tela da prova fecha sozinha depois de 10 segundos. Não precisa mais ir de computador em computador clicar em Fechar (o botão \"Fechar agora\" continua lá).",
+        "Corrigido: a nota podia ser trocada por \"O professor vai divulgar o resultado\" depois de 20 segundos, mesmo já tendo chegado."
       ]
     }
   ]
