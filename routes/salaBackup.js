@@ -201,4 +201,77 @@ router.post('/backup-auto', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------------------------------------------------------------------------------------------------------------------------------
+// GABARITO DA PROVA POR E-MAIL: o professor (com a mesma AUTORIZAÇÃO do e-mail dele usada no backup) manda o resultado de UM aluno
+// para o e-mail que o aluno digitou na prova. O modelo do e-mail é fixo: só entram os dados da prova. Limites por IP, por professor e por aluno.
+const MAX_PROVA_POR_DIA = 400; // e-mails de prova por professor por dia
+const MAX_PROVA_POR_ALUNO_DIA = 6; // por endereço de aluno por dia
+const escHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const LETRAS_OP = 'ABCDEFGH';
+const indiceOk = (v, n) => (Number.isInteger(v) && v >= 0 && v < n ? v : -1);
+
+function itensDaProva(lista) {
+  return (Array.isArray(lista) ? lista : []).slice(0, 100).map((i) => {
+    const opcoes = (Array.isArray(i && i.opcoes) ? i.opcoes : []).slice(0, 8).map((o) => String(o == null ? '' : o).slice(0, 300));
+    return { q: String((i && i.q) || '').slice(0, 500), opcoes, marcada: indiceOk(Number(i && i.marcada), opcoes.length), certa: indiceOk(Number(i && i.certa), opcoes.length) };
+  }).filter((i) => i.q && i.opcoes.length >= 2 && i.certa >= 0);
+}
+
+function montarEmailProva({ titulo, nome, nota, acertos, total, mostrarNota, itens, professor }) {
+  const primeiro = String(nome || '').split(' ')[0].slice(0, 40) || 'aluno';
+  const caixaNota = mostrarNota ? `<div style="background:#eef4ff;border:1px solid #c7d8f5;border-radius:12px;padding:14px 18px;margin:14px 0;text-align:center"><div style="font-size:15px;color:#334155">Você acertou <b>${acertos}</b> de <b>${total}</b></div><div style="font-size:34px;font-weight:800;color:#1d4ed8">Nota ${escHtml(String(nota).replace('.', ','))}</div></div>` : '';
+  let html = '';
+  let texto = `Olá, ${primeiro}! Segue o gabarito da prova "${titulo}".\n`;
+  if (mostrarNota) texto += `Você acertou ${acertos} de ${total}. Nota ${String(nota).replace('.', ',')}.\n`;
+  itens.forEach((it, n) => {
+    const certaMarcada = it.marcada === it.certa;
+    html += `<div style="border:1px solid #d8dee9;border-radius:12px;padding:12px 14px;margin:12px 0"><div style="font-weight:700;margin-bottom:8px">${n + 1}. ${escHtml(it.q)}</div>`;
+    texto += `\n${n + 1}) ${it.q}\n`;
+    it.opcoes.forEach((op, k) => {
+      let estilo = 'color:#475569'; let marca = ''; let nota2 = '';
+      if (k === it.certa) { estilo = 'background:#e8f7ee;color:#14532d;font-weight:700'; marca = '✅ '; nota2 = certaMarcada ? ' — sua resposta (certa)' : ' — resposta certa'; }
+      else if (k === it.marcada) { estilo = 'background:#fdecec;color:#7f1d1d;font-weight:700'; marca = '❌ '; nota2 = ' — sua resposta'; }
+      html += `<div style="padding:6px 10px;border-radius:8px;margin:3px 0;${estilo}">${marca}${LETRAS_OP[k]}) ${escHtml(op)}${nota2}</div>`;
+      texto += `${marca}${LETRAS_OP[k]}) ${op}${nota2}\n`;
+    });
+    if (it.marcada < 0) { html += '<div style="color:#92400e;font-size:13px;margin-top:6px">Você não respondeu esta questão.</div>'; texto += 'Você não respondeu esta questão.\n'; }
+    html += '</div>';
+  });
+  const rodape = professor ? `Enviado pelo F5 Sala a pedido de ${escHtml(professor)}.` : 'Enviado pelo F5 Sala.';
+  const corpo = `<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#0a1628"><h2 style="margin-bottom:4px">${escHtml(titulo)}</h2><p style="margin-top:0;color:#475569">Olá, ${escHtml(primeiro)}! Aqui estão as suas respostas e o gabarito da prova.</p>${caixaNota}${html}<p style="color:#64748b;font-size:12px;margin-top:18px">${rodape} Se você não esperava este e-mail, pode ignorar.</p></div>`;
+  texto += `\n${professor ? 'Enviado pelo F5 Sala a pedido de ' + professor + '.' : 'Enviado pelo F5 Sala.'} Se você não esperava este e-mail, ignore.`;
+  return { html: corpo, text: texto };
+}
+
+// POST /api/sala/prova-email  { email, token, professor, aluno: { email, nome }, prova: { titulo, mostrarNota, nota, acertos, total, itens: [{ q, opcoes, marcada, certa }] } }
+router.post('/prova-email', async (req, res) => {
+  if (!RESEND_API_KEY) return res.status(503).json({ error: 'O envio por e-mail ainda não está disponível.' });
+  const b = req.body || {};
+  const prof = normalizar(b.email);
+  const alunoEmail = normalizar(b.aluno && b.aluno.email);
+  if (!emailOk(prof) || !emailOk(alunoEmail)) return res.status(400).json({ error: 'E-mail inválido.' });
+  if (!limitar('pv-ip:' + req.ip, 600, 3600000)) return res.status(429).json({ error: 'Muitos envios. Tente de novo daqui a pouco.' });
+  if (!lerToken(b.token, prof)) return res.status(401).json({ error: 'A autorização do seu e-mail expirou ou não vale para este e-mail. Ative de novo em Ajustes → Backup.', reautorizar: true });
+  if (!limitar('pv-prof:' + prof, MAX_PROVA_POR_DIA, 86400000)) return res.status(429).json({ error: 'Limite de e-mails de prova por dia atingido. Tente amanhã.' });
+  if (!limitar('pv-al:' + alunoEmail, MAX_PROVA_POR_ALUNO_DIA, 86400000)) return res.status(429).json({ error: 'Este e-mail já recebeu muitos resultados hoje.' });
+  const p = b.prova || {};
+  const itens = itensDaProva(p.itens);
+  if (!itens.length) return res.status(400).json({ error: 'A prova está vazia.' });
+  const titulo = String(p.titulo || 'Prova').slice(0, 120);
+  const nome = String((b.aluno && b.aluno.nome) || '').slice(0, 60);
+  const dados = {
+    titulo, nome, itens, mostrarNota: !!p.mostrarNota,
+    nota: String(p.nota == null ? '' : p.nota).slice(0, 8), acertos: Math.max(0, Math.min(100, Number(p.acertos) || 0)), total: Math.max(0, Math.min(100, Number(p.total) || itens.length)),
+    professor: String(b.professor || '').slice(0, 60),
+  };
+  const { html, text } = montarEmailProva(dados);
+  try {
+    await enviarResend({ to: [alunoEmail], reply_to: [prof], subject: `Seu resultado: ${titulo}`.slice(0, 150), html, text });
+  } catch (e) {
+    console.error('[sala] falha ao enviar gabarito da prova:', e.message);
+    return res.status(502).json({ error: 'Não consegui enviar o e-mail agora. Tente de novo em instantes.' });
+  }
+  res.json({ ok: true });
+});
+
 module.exports = router;
