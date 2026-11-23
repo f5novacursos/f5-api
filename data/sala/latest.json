@@ -1,16 +1,15 @@
 {
-  "versao": "0.9.69",
-  "sha256": "a4d7b4cf368a9ab7360981d3f416647ac5d0f66cacf03a316496a61d4632d2df",
-  "tamanho": 2591457,
+  "versao": "0.9.70",
+  "sha256": "86608406a0c6c43c18d7526103acc5feac888c568a3ee1909c1c05bc625827c0",
+  "tamanho": 2592355,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-19T20:20:35.773Z",
+  "publicadoEm": "2026-11-23T12:41:39.283Z",
   "novidades": [
     {
-      "versao": "0.9.69",
-      "titulo": "Iniciar aula direto no cartão da turma e botões da barra separados",
+      "versao": "0.9.70",
+      "titulo": "Padrão da mesa agora guarda as pastas de aulas anteriores",
       "itens": [
-        "Cada cartão em \"Minhas turmas\" ganhou o botão \"▶ Iniciar aula\" (aparece quando nenhuma aula está em andamento). Com a aula iniciada, só a turma em aula mostra \"⏹ Encerrar aula\".",
-        "Na barra de ícones, os botões ligados (azuis) vizinhos não ficam mais colados: agora há um espaço entre eles."
+        "O \"Padrão da mesa\" passa a guardar também as pastas \"Aula ...\" de dias anteriores (vão para Documentos → Guardados da Área de Trabalho, nada é apagado). A pasta \"Aula\" de hoje continua na mesa durante a aula."
       ]
     }
   ]
