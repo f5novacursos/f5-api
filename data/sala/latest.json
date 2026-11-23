@@ -1,17 +1,18 @@
 {
-  "versao": "0.9.73",
-  "sha256": "cbcbe6bfd4fcc16c0693746f891e1aa8cf10719a895c11dbed5a2253b3241b68",
-  "tamanho": 2598075,
+  "versao": "0.9.74",
+  "sha256": "87edea435995db464951890f3339f52b4fcd881f2d1af9651e4260e0374958b2",
+  "tamanho": 2606754,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-23T15:54:21.052Z",
+  "publicadoEm": "2026-11-23T16:14:11.185Z",
   "novidades": [
     {
-      "versao": "0.9.73",
-      "titulo": "Prova: uma pergunta por vez e a tela fecha sozinha ao encerrar",
+      "versao": "0.9.74",
+      "titulo": "Prova: o aluno recebe o gabarito por e-mail (como no Google Forms)",
       "itens": [
-        "Na tela do aluno, a prova mostra uma pergunta por vez, com os botões \"Voltar\" e \"Avançar\" e bolinhas numeradas (azul = respondida) para ir direto a uma questão. Na última pergunta aparece \"Enviar a prova\". Também dá para usar as teclas A, B, C e D para marcar e as setas para mudar de pergunta.",
-        "Ao encerrar a prova (ou quando o aluno envia), a nota aparece e a tela da prova fecha sozinha depois de 10 segundos. Não precisa mais ir de computador em computador clicar em Fechar (o botão \"Fechar agora\" continua lá).",
-        "Corrigido: a nota podia ser trocada por \"O professor vai divulgar o resultado\" depois de 20 segundos, mesmo já tendo chegado."
+        "No começo da prova o aluno digita o nome e, logo abaixo, o e-mail (opcional). Quando a prova termina, ele recebe um e-mail com as respostas dele marcadas com ✅ e ❌, a alternativa certa de cada questão e a nota (se \"Mostrar a nota\" estiver ligado).",
+        "Em Provas → Montar, a nova opção \"Enviar o gabarito por e-mail\" deixa escolher: ao encerrar a prova (recomendado, para quem acaba cedo não passar o gabarito aos colegas), assim que o aluno terminar, ou não enviar.",
+        "Em Resultados aparece quantos alunos informaram e-mail e quantos já receberam, com o botão \"Enviar o gabarito por e-mail agora\" para mandar ou tentar de novo.",
+        "Para usar, confirme o seu e-mail uma vez em Ajustes → Backup (a mesma confirmação do backup semanal). O servidor só envia com essa confirmação e limita a quantidade de e-mails por dia."
       ]
     }
   ]
