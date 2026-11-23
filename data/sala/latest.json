@@ -1,15 +1,16 @@
 {
-  "versao": "0.9.70",
-  "sha256": "86608406a0c6c43c18d7526103acc5feac888c568a3ee1909c1c05bc625827c0",
-  "tamanho": 2592355,
+  "versao": "0.9.72",
+  "sha256": "5c9ca1fe7bbed32afad197728de02d901fc54aa465042ee3d83ab48fd1e37427",
+  "tamanho": 2593391,
   "dependencias": "2f2257cd36b30620",
-  "publicadoEm": "2026-11-23T12:41:39.283Z",
+  "publicadoEm": "2026-11-23T15:41:04.543Z",
   "novidades": [
     {
-      "versao": "0.9.70",
-      "titulo": "Padrão da mesa agora guarda as pastas de aulas anteriores",
+      "versao": "0.9.72",
+      "titulo": "Montar prova entende a resposta do ChatGPT (com barras) e o pedido ficou melhor",
       "itens": [
-        "O \"Padrão da mesa\" passa a guardar também as pastas \"Aula ...\" de dias anteriores (vão para Documentos → Guardados da Área de Trabalho, nada é apagado). A pasta \"Aula\" de hoje continua na mesa durante a aula."
+        "Em Provas, \"Montar a prova\" voltou a funcionar quando o ChatGPT devolve o texto com uma barra no fim de cada linha e \"1\\)\" no lugar de \"1)\". O programa ignora essas barras e monta as questões normalmente.",
+        "O pedido que você copia para o ChatGPT agora pede a resposta em texto puro, dentro de um bloco de código, sem barras, para já vir no formato certo."
       ]
     }
   ]
